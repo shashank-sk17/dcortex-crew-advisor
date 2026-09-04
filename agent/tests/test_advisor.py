@@ -464,3 +464,53 @@ class TestValueFormatting:
                             answer=LookupAnswer(rows=rows),
                             trace=[TraceEntry(tool="lookup", result=rows)])
         assert verify(explainer.render(r), r.trace).ok
+
+
+class TestRecommendationLeads:
+    """A ranked table makes the controller do the deciding, which is the work
+    the advisor was meant to save. Recommendation first, evidence last."""
+
+    def _answer(self):
+        from agent.schemas import FunnelStage, Option, ReplacementAnswer
+
+        cheap = Option(action="Assign Captain C-3310 (reserve callout)",
+                       crew_id="C-3310", legal=True, cost_inr=18500, rank=1,
+                       rules_checked=["R"] * 7)
+        return ReplacementAnswer(
+            recommended=cheap, cancellation_multiple=81,
+            options=[cheap,
+                     Option(action="Assign Captain C-1526 (day-off)", crew_id="C-1526",
+                            legal=True, cost_inr=24000, rank=2),
+                     Option(action="Cancel all 6 flights", crew_id=None,
+                            legal=True, cost_inr=1500000, rank=3)],
+            funnel=[FunnelStage("considered", 27),
+                    FunnelStage("qualified", 16, 11, "no rating"),
+                    FunnelStage("legal", 5)],
+        )
+
+    def test_opens_with_the_recommendation(self):
+        from agent import explainer
+
+        first = explainer.render_replacement(self._answer()).splitlines()[0]
+        assert "C-3310" in first and "18,500" in first
+
+    def test_cancel_is_a_contrast_not_a_ranked_row(self):
+        from agent import explainer
+
+        out = explainer.render_replacement(self._answer())
+        assert "Against cancelling" in out
+        assert "81×" in out
+        assert "#3 Cancel" not in out, "cancel listed as a peer option"
+
+    def test_funnel_comes_last_as_evidence(self):
+        from agent import explainer
+
+        out = explainer.render_replacement(self._answer())
+        assert out.index("C-3310") < out.index("Considered 27")
+
+    def test_ties_are_declared(self):
+        from agent import explainer
+
+        a = self._answer()
+        a.equal_cost_alternatives = 3
+        assert "not a uniquely correct choice" in explainer.render_replacement(a)

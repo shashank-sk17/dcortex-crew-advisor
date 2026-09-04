@@ -134,7 +134,28 @@ def render_lookup(answer: LookupAnswer) -> str:
 
 
 def render_replacement(answer: ReplacementAnswer) -> str:
+    """Lead with the recommendation; the ranking is support, not the answer.
+
+    A controller under pressure needs to know what to do, then why. A ranked
+    table makes them do the deciding, which is the work we were meant to save.
+    """
     lines: list[str] = []
+
+    if rec := answer.recommended:
+        head = f"▸ {rec.action} — {_inr(rec.cost_inr)}"
+        if rec.delay_hours:
+            head += f", {_hours(rec.delay_hours)} delay"
+        else:
+            head += ", no delay"
+        lines.append(head)
+
+        if answer.equal_cost_alternatives:
+            n = answer.equal_cost_alternatives
+            lines.append(f"  ({n} other option{'s' if n > 1 else ''} cost the same "
+                         f"— this is not a uniquely correct choice.)")
+        if rec.rules_checked:
+            lines.append(f"  Clears all {len(rec.rules_checked)} rules.")
+        lines.append("")
 
     if answer.uncovered_flights:
         lines.append(
@@ -149,16 +170,25 @@ def render_replacement(answer: ReplacementAnswer) -> str:
     if answer.passengers_affected:
         lines.append(f"{answer.passengers_affected} passengers affected.")
 
-    if answer.funnel:
-        trail = " → ".join(str(stage.count) for stage in answer.funnel)
-        lines.append(f"\nCandidates: {trail}")
-        for stage in answer.funnel:
-            if stage.dropped:
-                lines.append(f"  −{stage.dropped} {stage.stage}: {stage.reason}")
-
     if answer.options:
-        lines.append("\nLegal options:")
-        lines += [f"  {render_option(o)}" for o in answer.options]
+        crewed = [o for o in answer.options if o.crew_id]
+        cancel = next((o for o in answer.options if not o.crew_id), None)
+        alternatives = [o for o in crewed if o is not answer.recommended
+                        and o.crew_id != (answer.recommended.crew_id
+                                          if answer.recommended else None)]
+
+        if alternatives:
+            lines.append("\nAlternatives:")
+            lines += [f"  {render_option(o)}" for o in alternatives]
+
+        if cancel:
+            # The contrast, not a row. Cancellation is an order of magnitude
+            # above everything else, and that gap is the argument a controller
+            # takes to their manager.
+            lines.append(f"\nAgainst cancelling: {_inr(cancel.cost_inr)}")
+            if answer.cancellation_multiple:
+                lines.append(f"  {answer.cancellation_multiple}× the recommended option. "
+                             f"Even the deadhead is far cheaper than cancelling.")
     elif not answer.near_misses and answer.funnel:
         # Only claim this when a search actually ran. Saying "no legal option"
         # because the search tool is missing asserts something about the world
@@ -168,6 +198,16 @@ def render_replacement(answer: ReplacementAnswer) -> str:
     if answer.near_misses:
         lines.append("\nNear misses — not legal now, but reachable:")
         lines += [f"  {render_option(o, show_rank=False)}" for o in answer.near_misses]
+
+    # Evidence last: the controller acts on the recommendation, and audits the
+    # funnel only if they want to challenge it.
+    if answer.funnel:
+        considered = answer.funnel[0].count
+        legal = answer.funnel[-1].count
+        lines.append(f"\nConsidered {considered}, {legal} legal:")
+        for stage in answer.funnel:
+            if stage.dropped:
+                lines.append(f"  −{stage.dropped} {stage.stage}: {stage.reason}")
 
     return "\n".join(lines)
 

@@ -108,9 +108,20 @@ class CoreToolPort(PostgresToolPort):
             "verdicts": [], "blast_radius": n_flights, "unlock": None,
         })
 
+        # Computed here, not in the renderer: "81x the cost of covering" is a
+        # figure the verifier would reject if prose derived it, and it is the
+        # single most persuasive number in the answer.
+        cheapest = next((o["cost_inr"] for o in options if o["crew_id"]), 0)
+        cancel_cost = options[-1]["cost_inr"]
+        recommended = next((o for o in options if o["crew_id"]), None)
+
         return {
             "pairing_id": pairing_id,
             "role": role,
+            "recommended": recommended,
+            "cancellation_multiple": round(cancel_cost / cheapest) if cheapest else 0,
+            "equal_cost_alternatives": sum(
+                1 for o in options if o["crew_id"] and o["cost_inr"] == cheapest) - 1,
             "funnel": self._funnel(assessed, len(pool)),
             "options": options,
             "near_misses": [],

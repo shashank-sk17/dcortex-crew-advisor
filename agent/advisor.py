@@ -261,7 +261,11 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
     if route.tier is Tier.REPLACEMENT:
         found = results.get("find_options") or {}
         rippled = results.get("ripple") or {}
+        rec = _coerce(Option, [found["recommended"]]) if found.get("recommended") else []
         return ReplacementAnswer(
+            recommended=rec[0] if rec else None,
+            cancellation_multiple=found.get("cancellation_multiple", 0),
+            equal_cost_alternatives=found.get("equal_cost_alternatives", 0),
             uncovered_flights=rippled.get("uncovered_flights", []),
             at_risk_flights=rippled.get("at_risk_flights", []),
             passengers_affected=rippled.get("passengers", 0),
