@@ -86,11 +86,19 @@ The answer keys rank options by `(legal, cost_inr, delay_hours)` against a fixed
 
 So our ranker's default configuration must **reproduce the answer keys exactly**. That is a correctness bar, not a design preference.
 
-### ④ Scenario S6 breaks greedy solvers
+### ④ Scenario S6 needs a disjointness constraint — and has 20 correct answers
 
 > *"Both A320 captains (VT-DXA and VT-DXB) are sick at 00:30Z on 18 Sep. Give the **optimal joint** crewing plan."* — key: `total_cost_inr: 42500`
 
-Solve each aircraft independently and both grab the same cheapest reserve (C-3305). The correct answer assigns C-3305 to one and a ₹24,000 day-off callout to the other. **We need real joint assignment.** Candidate sets are small, so exhaustive search is fine — but greedy is wrong, and most teams will ship greedy.
+`options_dxa` and `options_dxb` are near-identical lists — C-3305 is rank 1 in **both**, C-1017 rank 2 in **both**. Solve each aircraft independently and you assign C-3305 to both for ₹37,000. That is **infeasible**, not merely suboptimal: one person cannot fly two aircraft at once.
+
+The optimal plan is C-3305 (reserve, ₹18,500) on one pairing and any ₹24,000 day-off captain on the other.
+
+**And there are 20 correct answers, not one.** Ten captains sit at exactly ₹24,000, and the two roles are interchangeable — dCortex says so outright: *"Equal-cost mirror assignments (swapping which pairing each candidate covers) are equally correct."* So:
+
+> ⚠️ **The harness must never compare `crew_id` on S6/Q32.** Score `total_cost_inr == 42500` **+** both legal **+** the two crew IDs distinct. Comparing identities marks 19 of the 20 correct answers wrong.
+
+Note we are *not* claiming greedy fails here — sequential greedy that removes the assigned crew gets ₹42,500, because the cost structure is flat (one cheap reserve, then a plateau). We build proper assignment for **robustness**: the held-out scenarios may not be flat, and Hungarian over a small cost matrix is ~10 lines.
 
 ---
 
@@ -216,7 +224,7 @@ Copy-on-write fork → apply perturbation → re-run LEX + RIPPLE → **diff the
 
 ### `JOINT` — multi-event assignment
 
-Simultaneous disruptions solved as **one** problem, not N greedy ones. Exhaustive over the (small) legal candidate sets, minimising total cost. This is what S6 scores.
+Simultaneous disruptions solved as **one** problem, under a hard **disjointness constraint** — the same crew cannot cover two pairings at once. Hungarian (or exhaustive; the sets are tiny) over the legal candidates, minimising total cost. This is what S6 scores.
 
 ---
 
@@ -305,7 +313,7 @@ You own correctness. Everything downstream is wrong if this is wrong.
 
 - **Ship `World` + the loader first** — it unblocks all three of us, so treat it as your day-one deliverable even though it's the least interesting part.
 - **Then all 7 LEX rules**, one at a time, each with unit tests, each returning a trace. Read `docs/RULES.md` first: the calendar-day window and the FDP sector reduction are where silent wrong answers come from. Q02 (`20.93h duty / 39.07h headroom`) is your canary — if that's right, your window math is right.
-- **Then `JOINT`** — the S6 optimiser. Greedy fails it; exhaustive over the legal candidate sets is correct and fast enough. Target: `total_cost_inr: 42500`.
+- **Then `JOINT`** — the S6 optimiser. The thing that matters is the **disjointness constraint** (one crew, one pairing); without it you double-book C-3305 and produce an infeasible ₹37,000 plan. Hungarian over a small cost matrix, or exhaustive — both fine. Target: `total_cost_inr: 42500`, and remember 20 different assignments hit it.
 - Cost model is a lookup table off `costs.json`. Keep it dumb and data-driven.
 
 ### Gayathri — Reasoning & Evals (L2)
@@ -388,8 +396,56 @@ Deliberately boring. Every box earns its place at 150 crew and 147 flights.
 | API | Flask + SSE | SSE is all the streaming we need |
 | Async | none on the critical path | every op is sub-second in memory; Celery is pure overhead |
 | Agent | Claude tool-use | Sonnet 5 for the loop, Haiku 4.5 for the router |
+| Retrieval | pgvector on the audit-log Postgres | no second datastore; joins against the decision log |
 | UI | Angular + RxJS | RxJS is ideal for the streaming trace |
 | Tests | pytest + the 38 gold questions | **the answer keys are the test suite** |
+
+### 11.1 Agent topology — one agent with tools, not a multi-agent system
+
+```
+  query
+    │
+    ▼
+  ROUTER      Haiku 4.5 · tier + intent · regex entity extraction
+    │
+    ▼
+  ADVISOR     Sonnet 5 · ONE tool loop, parallel tool calls
+    │         lookup · check_legality · find_options
+    │         ripple · simulate · joint_plan · explain_rule
+    ▼
+  VERIFIER    deterministic — set membership over the trace, no LLM
+    │
+    ▼
+  EXPLAINER   Sonnet 5 · typed answer object → controller prose
+```
+
+**Why not multi-agent.** All the hard reasoning is already deterministic Python — LEX, RIPPLE, JUDGE, JOINT. A multi-agent decomposition would have language models conferring about work that `core/` computes exactly and instantly, paying serial round-trips for zero added correctness, on a desk whose entire value proposition is speed at 05:00.
+
+Multi-agent earns its place when subtasks need genuinely different context that won't co-exist in one window, or when fan-out over a large noisy search space needs isolated reasoning. Our whole world is 700 KB and every candidate is scored by a pure function. Neither condition holds.
+
+> **Say this to the judges.** *"We evaluated a multi-agent decomposition and rejected it — the reasoning is deterministic, so agent-to-agent chatter adds latency and failure modes without adding correctness."* A defended negative decision is architecture. A cargo-culted swarm diagram is not.
+>
+> And name it honestly: the above is a **pipeline with three model calls**, not a multi-agent system. Don't put "multi-agent" on the slide.
+
+### 11.2 Retrieval — regex for entities, dense for intent
+
+The whole corpus is **776 tokens** (38 gold prompts) plus ~120 (7 rule texts). That is smaller than one retrieval round-trip, so the router's exemplars go in the **cached system prompt** — it sees all 38 rather than a top-3 approximation. Strictly more accurate, zero infrastructure.
+
+Where retrieval *does* apply — `explain_rule`, and precedent recall over the decision audit log as it grows:
+
+```
+  "can C-1042 cover P-2291 on the 15th?"
+        ├─► REGEX  → C-1042, P-2291, 2026-09-15    exact, no ranking
+        └─► DENSE  → CHECK_LEGALITY, tier 2         k=3, cosine, IDs masked
+```
+
+**No BM25.** It is a statistical approximation of exact matching, and we have exact identifiers with known formats (`C-\d{4}`, `P-\d{4}`, `DX\d{3}`, `RULE-[A-Z]+-\d{2}`, dates, 3-letter stations). Regex beats it outright and never mis-ranks. BM25's other job — topical matching — is near-useless on a corpus where all 38 documents share the same vocabulary ("captain", "pairing", "sick", "reserve"). If we ever *do* fuse two rankers, use **Reciprocal Rank Fusion**, not weighted score blending: BM25 scores and cosine similarities live on different scales, so a fixed 0.5/0.5 on raw scores is arbitrary.
+
+**No reranker.** A cross-encoder over 38 candidates costs more latency than the retrieval it corrects. Revisit when the audit log reaches the thousands.
+
+**Two details that matter:**
+- **Mask IDs before embedding** — `"Captain C-1042 calls in sick"` → `"Captain <CREW> calls in sick"`. Collapses Q17 and S1 onto the same template, which is exactly what you want when the question is *"what kind of ask is this?"* Biggest single accuracy win available.
+- **Abstain below ~0.5 similarity.** Pass no exemplar rather than a misleading one — a bad exemplar steers the planner into the wrong toolchain confidently.
 
 ---
 
@@ -413,7 +469,7 @@ The two held-out scenarios in `crew-ops-advisor-dataset/internal/` are **locked*
 2. **We show the funnel.** 150 → 32 → 21 → 12 → 6, with the reason for every single drop.
 3. **RIPPLE.** We model consequence, not lookup — we catch the orphaned day-2 pairing that leg-level thinking misses.
 4. **The answer isn't always a person.** *"Deadhead C-2210 from DEL: ₹41,200, three hours late, zero cancellations — versus ₹250,000 to cancel."*
-5. **We solve S6 jointly.** Greedy gets it wrong. We don't.
+5. **We solve S6 jointly**, under a disjointness constraint — and we recognise that 20 assignments are equally optimal, so we score on cost and feasibility rather than on identity.
 6. **The controller keeps the wheel.** Policy sliders, live re-ranking, transparent tradeoffs. Advisor, not autopilot.
 7. **We measured it.** Per-tier accuracy against dCortex's own questions and scenarios, in CI, printed on the README. A number, not a claim.
 

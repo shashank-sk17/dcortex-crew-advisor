@@ -85,8 +85,12 @@ event: done         data: {"answer":{...}}
                     "edges": [ { "from": "C-1042", "to": "DX412-2026-09-15",
                                  "kind": "direct" } ] },
   "world_diff": { "before": {...}, "after": {...}, "changed": [...] },  // SANDBOX
-  "joint_plan": { "total_cost_inr": 42500, "assignments": {...} } }     // JOINT / S6
+  "joint_plan": { "total_cost_inr": 42500, "assignments": {...},
+                  "equal_cost_alternatives": 20 } }                      // JOINT / S6
 ```
+
+> **Ties are first-class.** S6 has **20 equally-optimal assignments** (ten captains at ₹24,000 × two interchangeable pairings). dCortex: *"Equal-cost mirror assignments … are equally correct."*
+> The harness scores `total_cost_inr` + feasibility (both legal, crew IDs distinct) — **never `crew_id`**. Surface `equal_cost_alternatives` so the UI can tell the controller *"19 other assignments cost the same"* rather than implying a single forced answer.
 
 ---
 
