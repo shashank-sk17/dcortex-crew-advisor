@@ -61,12 +61,14 @@ jobs:
               done = sum(1 for i in mine if i["state"] == "CLOSED")
               blocks.append(f"### {label} — {layer}  {bar(done, len(mine))}  {done}/{len(mine)}\n")
               if mine:
-                  blocks.append("| # | Task | State |")
-                  blocks.append("|---|---|---|")
+                  blocks.append("| # | Task | Phase | State |")
+                  blocks.append("|---|---|---|---|")
                   for i in sorted(mine, key=lambda x: x["number"]):
-                      blocked = any(l["name"].lower() == "blocker" for l in i["labels"])
-                      state = "✅" if i["state"] == "CLOSED" else ("\U0001F534" if blocked else "\U0001F7E1")
-                      blocks.append(f"| {i['number']} | {i['title']} | {state} |")
+                      names = [l["name"].lower() for l in i["labels"]]
+                      ph = "0" if "phase-0" in names else ("1" if "phase-1" in names else "—")
+                      state = ("✅" if i["state"] == "CLOSED"
+                               else "\U0001F534" if "blocker" in names else "⬜")
+                      blocks.append(f"| {i['number']} | {i['title']} | {ph} | {state} |")
               else:
                   blocks.append("_No issues assigned yet._")
               blocks.append("")
