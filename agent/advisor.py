@@ -176,6 +176,41 @@ def seed_calls(route: Route) -> list[ToolCall]:
 # --------------------------------------------------------------------------
 
 
+def followup_calls(route: Route, trace: list[TraceEntry]) -> list[ToolCall]:
+    """Calls derivable from what the seeds already returned.
+
+    A disruption named by route — "captain of BLR->BOM is out" — needs a leg
+    identified before cover can be found. The seed does that lookup, and the
+    flight id is then sitting in the trace; asking the model to carry it across
+    is asking it to do bookkeeping it is bad at. Left to itself, qwen3:8b
+    passed the literal string "BLR->BOM" as both flight_id and pairing_id.
+
+    So the deterministic layer does the hop it can see, and the model is left
+    with the part that actually needs judgement.
+    """
+    if route.intent not in (Intent.FIND_REPLACEMENT, Intent.RANK_OPTIONS):
+        return []
+    if any(e.tool == "find_options" for e in trace):
+        return []
+
+    flights = [
+        row
+        for entry in trace
+        if entry.tool == "lookup" and isinstance(entry.result, list)
+        for row in entry.result
+        if isinstance(row, dict) and "flight_id" in row
+    ]
+    if not flights:
+        return []
+
+    role = route.entities.roles[0] if route.entities.roles else "Captain"
+    return [ToolCall(
+        id="followup-0",
+        name="find_options",
+        args={"flight_id": flights[0]["flight_id"], "role": role},
+    )]
+
+
 def _coerce(cls: Any, rows: Any) -> list[Any]:
     """Turn raw tool output into the typed objects the renderer expects.
 
@@ -303,6 +338,8 @@ class Advisor:
 
         if seeds := seed_calls(turn.route):
             self._run_tools(seeds, turn)
+            if followups := followup_calls(turn.route, turn.trace):
+                self._run_tools(followups, turn)
 
         tools = tools_for(turn.route.intent, self.port)
         messages: list[dict[str, Any]] = [{"role": "user", "content": turn.query}]

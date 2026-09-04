@@ -207,3 +207,17 @@ class TestPostgresScalarTypes:
 
         t = trace({"date": dt.date(2026, 9, 15), "start": dt.time(6, 0)})
         assert verify("On 2026-09-15 from 06:00.", t).ok
+
+
+class TestErrorTextIsEvidence:
+    def test_id_named_in_a_tool_error_is_sourced(self):
+        """Explaining why a tool failed means repeating what it said. "no
+        fixture covers P-2218" makes P-2218 sourced, not invented."""
+        t = [TraceEntry(tool="find_options",
+                        error="UNRESOLVED_ENTITY: no fixture covers P-2218")]
+        assert verify("Cannot answer: no fixture covers P-2218.", t).ok
+
+    def test_an_id_that_appears_nowhere_still_fails(self):
+        t = [TraceEntry(tool="find_options",
+                        error="UNRESOLVED_ENTITY: no fixture covers P-2218")]
+        assert not verify("Cannot answer: no fixture covers P-9999.", t).ok

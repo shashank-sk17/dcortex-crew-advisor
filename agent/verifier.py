@@ -157,7 +157,10 @@ def build_evidence(trace: Iterable[TraceEntry]) -> Evidence:
     evidence = Evidence()
 
     for entry in trace:
-        for payload in (entry.result, entry.args):
+        # `error` counts as evidence: it is text a tool produced, and an id it
+        # names ("no fixture covers P-2218") is sourced in exactly the way an
+        # id in a successful result is.
+        for payload in (entry.result, entry.args, entry.error):
             if payload is None:
                 continue
             for scalar in _walk(payload):

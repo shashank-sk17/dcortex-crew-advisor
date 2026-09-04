@@ -18,6 +18,7 @@ no-op (DECISIONS.md #3).
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -95,19 +96,29 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "description": (
             "Enumerate and rank every way to cover an uncrewed pairing: reserve "
             "callout, day-off callout, deadhead positioning, delay, cancel. "
-            "Returns the candidate funnel with a reason for every drop."
+            "Returns the candidate funnel with a reason for every drop. "
+            "Identify by pairing_id, or by flight_id if you only know the leg. "
+            "Never construct an id from a route like 'BLR->BOM' — look it up."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "pairing_id": {"type": "string", "pattern": "^P-[0-9]{4}$"},
+                "flight_id": {
+                    "type": "string",
+                    "pattern": "^DX[0-9]{3}-[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "description": (
+                        "Alternative to pairing_id when the disruption is named "
+                        "by flight. The pairing is resolved for you."
+                    ),
+                },
                 "role": {
                     "type": "string",
                     "enum": ["Captain", "First Officer", "Senior Cabin Crew", "Cabin Crew"],
                 },
                 "callout_utc": {"type": "string", "description": "ISO-8601 UTC"},
             },
-            "required": ["pairing_id", "role"],
+            "required": ["role"],
         },
     },
     {
@@ -351,6 +362,21 @@ class PlaceholderToolPort:
         rows = self._rows(entity)
         return frozenset(rows[0].keys()) if rows else frozenset()
 
+    def pairing_for_flight(self, flight_id: str) -> str:
+        """Which pairing operates a given leg.
+
+        A controller names a disruption by route or flight ("captain of
+        BLR->BOM is out"), but cover is found per *pairing* — crew fly whole
+        pairings, not single legs. Without this hop the model invents a
+        pairing id from the route, which is how "BLR->BOM" ended up being
+        passed as one.
+        """
+        for pairing in self._rows("pairings"):
+            for day in pairing.get("days", []):
+                if flight_id in day.get("flights", []):
+                    return pairing["pairing_id"]
+        raise ToolError("UNRESOLVED_ENTITY", f"no pairing operates {flight_id!r}")
+
     def lookup(self, entity: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         rows = self._rows(entity)
         for key, want in resolve_filters(entity, filters, self.entity_fields(entity)).items():
@@ -390,6 +416,42 @@ class PlaceholderToolPort:
 # --------------------------------------------------------------------------
 
 
+def validate_args(name: str, args: dict[str, Any]) -> None:
+    """Check arguments against the tool's own JSON Schema before calling it.
+
+    The schemas already carry patterns like `^P-[0-9]{4}$`; nothing was
+    enforcing them, so `find_options(pairing_id="BLR->BOM")` reached the port
+    and failed there with a message about missing fixtures rather than about
+    the malformed id. Catching it here says what is actually wrong.
+    """
+    schema = next((t["input_schema"] for t in TOOL_SCHEMAS if t["name"] == name), None)
+    if not schema:
+        return
+    props = schema.get("properties", {})
+
+    for key, value in args.items():
+        spec = props.get(key)
+        if not spec or value is None:
+            continue
+        if (pattern := spec.get("pattern")) and isinstance(value, str):
+            if not re.fullmatch(pattern, value):
+                raise ToolError(
+                    "UNRESOLVED_ENTITY",
+                    f"{name}: {key}={value!r} is not a valid identifier "
+                    f"(expected {pattern}). Look the value up first rather "
+                    f"than constructing it.",
+                )
+        if (allowed := spec.get("enum")) and value not in allowed:
+            raise ToolError(
+                "UNRESOLVED_ENTITY",
+                f"{name}: {key}={value!r} is not one of {', '.join(map(str, allowed))}",
+            )
+
+    for required in schema.get("required", []):
+        if required not in args:
+            raise ToolError("UNRESOLVED_ENTITY", f"{name}: {required!r} is required")
+
+
 def dispatch(port: ToolPort, name: str, args: dict[str, Any]) -> TraceEntry:
     """Invoke one tool and record it. Never raises — errors become trace rows.
 
@@ -402,6 +464,7 @@ def dispatch(port: ToolPort, name: str, args: dict[str, Any]) -> TraceEntry:
         return TraceEntry(tool=name, args=args, error=f"unknown tool {name!r}")
 
     try:
+        validate_args(name, args)
         result = getattr(port, name)(**args)
         error = None
     except ToolError as exc:

@@ -250,7 +250,18 @@ class PostgresToolPort:
     def check_legality(self, crew_id: str, pairing_id: str, delay_h: float = 0.0) -> dict[str, Any]:
         raise ToolError("INTERNAL", f"check_legality: {self._NOT_YET}")
 
-    def find_options(self, pairing_id: str, role: str, callout_utc: str | None = None) -> dict[str, Any]:
+    def pairing_for_flight(self, flight_id: str) -> str:
+        rows = self._query(
+            "select pairing_id from pairing_day_flights where flight_id = %s limit 1",
+            (flight_id,),
+        )
+        if not rows:
+            raise ToolError("UNRESOLVED_ENTITY", f"no pairing operates {flight_id!r}")
+        return rows[0]["pairing_id"]
+
+    def find_options(self, role: str, pairing_id: str | None = None,
+                     flight_id: str | None = None,
+                     callout_utc: str | None = None) -> dict[str, Any]:
         raise ToolError("INTERNAL", f"find_options: {self._NOT_YET}")
 
     def ripple(self, event: dict[str, Any]) -> dict[str, Any]:

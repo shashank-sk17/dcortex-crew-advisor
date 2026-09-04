@@ -72,8 +72,20 @@ class FixtureToolPort(PlaceholderToolPort):
     # -- fixture-backed tools ---------------------------------------------
 
     def find_options(
-        self, pairing_id: str, role: str, callout_utc: str | None = None
+        self,
+        role: str,
+        pairing_id: str | None = None,
+        flight_id: str | None = None,
+        callout_utc: str | None = None,
     ) -> dict[str, Any]:
+        if not pairing_id and flight_id:
+            pairing_id = self.pairing_for_flight(flight_id)
+        if not pairing_id:
+            raise ToolError(
+                "UNRESOLVED_ENTITY",
+                "find_options needs a pairing_id or a flight_id; look the leg "
+                "up first if the disruption was named by route",
+            )
         return self._fixture_or_raise("find_options", pairing_id=pairing_id)
 
     def joint_plan(self, events: list[dict[str, Any]]) -> dict[str, Any]:
