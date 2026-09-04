@@ -125,9 +125,20 @@ RULES: tuple[Rule, ...] = (
         "explain_rule",
     ),
     Rule(
+        # Risk scores are provided input, not something we model — but a
+        # question about one is still a lookup, and must not fall through.
+        Intent.LOOKUP_CREW,
+        _p(r"\brisk score\b", r"\bdisruption[- ]risk\b", r"\brisk signal",
+           r"\bwhat drives\b"),
+        "risk",
+    ),
+    Rule(
         Intent.LOOKUP_FLIGHT,
         _p(r"\bwhich flights?\b", r"\bflights? (depart|arrive|from|to)\b",
-           r"\bdepartures?\b", r"\barrivals?\b", r"\bschedule\b"),
+           r"\bdepartures?\b", r"\barrivals?\b", r"\bschedule\b",
+           # Network shape is a question about the flight table.
+           r"\bstations?\b.*\b(serve|network|nonstop|non-stop)\b",
+           r"\bnetwork\b", r"\bnonstop\b", r"\bnon-stop\b", r"\broutes?\b"),
         "flight",
     ),
     Rule(

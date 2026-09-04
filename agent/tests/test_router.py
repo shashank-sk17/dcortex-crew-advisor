@@ -137,3 +137,47 @@ class TestGoldQuestionCoverage:
     def test_every_question_routes_without_error(self):
         for q in self._questions():
             assert route(q["prompt"]).intent in Intent
+
+
+class TestNoModelOnTheGoldSet:
+    """The routing claim is "38/38 with no model at all". That only holds if
+    every question matches a rule.
+
+    Two originally fell through (Q14 network shape, Q16 risk score). They still
+    *scored* correct, because the fallback defaults to LOOKUP_CREW at tier 1
+    and both happen to be tier 1 — but that is luck, not classification. Had
+    either been tier 2 or 3 the fallback would have been wrong.
+    """
+
+    def test_every_gold_question_matches_a_rule(self):
+        from agent.entities import extract
+        from agent.router import route_deterministic
+
+        fell = [
+            q["question_id"]
+            for q in self._questions()
+            if route_deterministic(q["prompt"], extract(q["prompt"])) is None
+        ]
+        assert not fell, f"fell through to the model: {fell}"
+
+    def test_routing_never_consults_the_model(self):
+        class Tripwire:
+            def complete(self, **kw):
+                raise AssertionError("the model was consulted")
+
+            def stream(self, **kw):
+                raise AssertionError("the model was consulted")
+
+        for q in self._questions():
+            assert int(route(q["prompt"], Tripwire()).tier) == q["tier"], q["question_id"]
+
+    @staticmethod
+    def _questions():
+        import json
+
+        from agent import config
+
+        path = config.DATA_DIR / "questions.json"
+        if not path.exists():
+            pytest.skip("dataset not vendored")
+        return json.loads(path.read_text())
