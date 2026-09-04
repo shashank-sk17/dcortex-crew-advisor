@@ -1,99 +1,237 @@
-# SETUP.md
+# Setup
 
-Clone → running in under ten minutes. If it takes longer than that, open a `blocker` issue rather than grinding on it alone.
+Clone to a running console in about fifteen minutes, most of it a model
+download. Instructions for **macOS/Linux** and **Windows** side by side.
+
+If any step doesn't work as written, that's a bug in this document — tell
+Shashank rather than working around it.
 
 ---
 
-## Everyone
+## What you need first
 
+| | |
+|---|---|
+| **Python 3.11+** | 3.12 recommended. `python3 --version` / `python --version` |
+| **Git** | |
+| **The database URL** | Ask Shashank. It is a secret and is **not** in the repo. |
+| **Ollama** *(optional)* | Only for the local model. Everything else runs without it. |
+
+---
+
+## 1. Clone and install
+
+**macOS / Linux**
 ```bash
-git clone git@github.com:shashank-sk17/dcortex-crew-advisor.git
+git clone https://github.com/shashank-sk17/dcortex-crew-advisor.git
 cd dcortex-crew-advisor
-python3 -m venv .venv && source .venv/bin/activate
+git checkout feat/shashank/dev-console
+
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-
-python3 crew-ops-advisor-dataset/validate.py   # must print PASS
 ```
 
-**Never edit anything under `crew-ops-advisor-dataset/`.** It's vendored and unmodified — `validate.py` is our canary that it stayed that way.
+**Windows (PowerShell)**
+```powershell
+git clone https://github.com/shashank-sk17/dcortex-crew-advisor.git
+cd dcortex-crew-advisor
+git checkout feat/shashank/dev-console
 
-Then read, in order: [`../README.md`](../README.md) → [`API_CONTRACT.md`](API_CONTRACT.md) → [`RULES.md`](RULES.md) → your section in README §8.
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
----
+> If PowerShell blocks the activate script, run
+> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in that window
+> and try again. On **Command Prompt** use `.venv\Scripts\activate.bat`.
 
-## Kashifa — World & Legality
+**Check it worked** — this should print `PASS` on both platforms:
 
 ```bash
-pytest core/ -v                    # your test suite
-pytest core/test_lex.py -k duty02  # one rule at a time
+python crew-ops-advisor-dataset/validate.py
 ```
 
-Your day-one deliverable is `core/loader.py` + `core/world.py`, because all three of us are blocked on it. It's the least interesting thing you'll build this week — ship it fast and move to LEX.
-
-**Read [`RULES.md`](RULES.md) before writing LEX.** The two traps in there are where silent wrong answers come from. Your canary is Q02: `duty_hours_7d = 20.93`, `headroom_hours = 39.07`.
+That confirms the vendored dataset is intact. Never edit anything under
+`crew-ops-advisor-dataset/` — it is dCortex's data and `validate.py` is how we
+know it stayed that way.
 
 ---
 
-## Gayathri — Reasoning & Evals
+## 2. Add the database URL
+
+Create a file called `.env` in the repo root with one line:
+
+```
+DATABASE_URL=postgresql://...paste the URL Shashank gives you...
+```
+
+**macOS / Linux**
+```bash
+printf 'DATABASE_URL=%s\n' 'PASTE_URL_HERE' > .env
+chmod 600 .env
+```
+
+**Windows (PowerShell)**
+```powershell
+'DATABASE_URL=PASTE_URL_HERE' | Out-File -Encoding ascii .env
+```
+
+`.env` is gitignored. **Do not commit it, paste it into a ticket, or put it in
+a screenshot.** If it leaks, tell Shashank so it can be rotated.
+
+**Check it worked:**
+```bash
+python -c "from core.port import CoreToolPort; print(CoreToolPort().world.crew['C-1042'])"
+```
+
+You should see a `CrewSnapshot` for A. Nair. If you see
+`no DATABASE_URL in the environment or .env`, the file is in the wrong place or
+misspelled.
+
+---
+
+## 3. Run the tests
 
 ```bash
-python evals/harness.py                    # full scorecard
-python evals/harness.py --tier 1           # one tier
-python evals/harness.py --question Q17     # one question, verbose diff
+pytest -q
 ```
 
-Start with the harness — it's fully self-contained, so you can build and land it before anyone else's code exists, and it's how the whole team knows where we stand.
-
-Then RIPPLE, starting from Q17 (`day2_also_at_risk`, `passengers_day1: 486`). That answer key tells you exactly what a correct cascade produces; work outward from it. Every module you own has a scenario that scores it — use them as the spec.
+**236 passing.** Roughly ten of those talk to the database and skip
+automatically if `DATABASE_URL` is missing, so a clean run without the URL
+shows skips rather than failures.
 
 ---
 
-## Shashank — Advisor Agent
+## 4. Start the console
 
 ```bash
-export ANTHROPIC_API_KEY=...              # .env, never committed
-python -m agent.cli "Who is on reserve at BLR on 2026-09-15?"
-python -m agent.cli --tier 2 --scenario S2
+python -m devui.server
 ```
 
-Freeze `API_CONTRACT.md` first — Kiran and the harness are both waiting on the shapes, not the implementation.
+Open **http://localhost:8420**.
+
+That runs with no model and no database — enough to see the interface. To pick
+backends, set environment variables first:
+
+**macOS / Linux**
+```bash
+AGENT_DATA=core AGENT_LLM=ollama python -m devui.server
+```
+
+**Windows (PowerShell)**
+```powershell
+$env:AGENT_DATA="core"; $env:AGENT_LLM="ollama"; python -m devui.server
+```
+
+**Windows (Command Prompt)**
+```cmd
+set AGENT_DATA=core && set AGENT_LLM=ollama && python -m devui.server
+```
+
+### The backends
+
+| `AGENT_DATA` | What answers your question |
+|---|---|
+| `json` *(default)* | Vendored JSON files. Tier 1 only. No database needed. |
+| `postgres` | Real reads from Neon. Tier 1 only — no rules engine. |
+| `fixtures` | JSON lookups + dCortex's answer keys for tiers 2 and 3. Correct data, but replayed for five pairings only. |
+| **`core`** | **The rules engine. Everything computed from the database, any pairing.** |
+
+| `AGENT_LLM` | |
+|---|---|
+| `placeholder` *(default)* | No model. Answers come from templates — terse but correct. |
+| `ollama` | Local model. Needs step 5. |
+
+The status bar at the top of the console always names which is live, so you
+never have to guess what produced an answer.
 
 ---
 
-## Kiran — Ops Console
+## 5. The local model *(optional)*
+
+Only needed for `AGENT_LLM=ollama`. Everything works without it — the
+templates produce correct answers, just plainer ones.
+
+**macOS**
+```bash
+brew install ollama        # or download from https://ollama.com
+ollama serve &             # leave running
+ollama pull qwen3:8b       # ~5.2 GB
+```
+
+**Windows** — download the installer from <https://ollama.com/download>. It
+runs as a background service, so no `ollama serve` needed.
+```powershell
+ollama pull qwen3:8b
+```
+
+**Check it worked:**
+```bash
+ollama list
+```
+
+`qwen3:8b` should be listed. Expect **10–30 seconds per question** on a laptop.
+
+> **Why qwen3 and not Llama?** Measured on our tool schemas at temperature 0:
+> qwen3:8b gets 4/4 tool calls, llama3.1:8b 4/4, llama3.2 2/4, and llama3 0/4
+> because the original Llama 3 has no tool support at all. Reasoning mode is
+> off deliberately — with it on, qwen3 skips the tool and answers from the
+> prompt instead, which defeats the whole design. See `agent/README.md`.
+
+---
+
+## 6. Try it
+
+Type these into the console, or click any of the 38 gold questions in the left
+rail.
+
+| Question | What it shows |
+|---|---|
+| `Who is on reserve at BLR on 2026-09-15?` | Tier 1, real data, every claim traced |
+| `What does RULE-DUTY-02 say?` | Rule lookup with citations |
+| `Captain of P-2291 is not available on 2026-09-15` | **The main one** — recommendation, alternatives, cancel contrast, candidate funnel |
+| `If C-2087 covers P-2291, does any rule breach?` | Rule-by-rule verdict with the numbers |
+| `Both A320 captains are sick at 00:30Z on 18 Sep. Give the optimal joint plan.` | Joint assignment, ₹42,500, 20 equal-cost ties |
+
+`#q=...` in the URL re-runs a question, so you can paste a failing case into
+Slack and someone else reproduces it exactly.
+
+---
+
+## Troubleshooting
+
+**`port 8420 is already in use`** — another console is running.
 
 ```bash
-cd frontend
-npm install
-npm start                                  # http://localhost:4200
-
-# in another shell — mock API, no Python core needed
-python -m api.mock                         # http://localhost:5000
+lsof -ti:8420 | xargs kill          # macOS / Linux
+```
+```powershell
+Get-NetTCPConnection -LocalPort 8420 | Select -Expand OwningProcess | Stop-Process
 ```
 
-The mock server serves `evals/fixtures/`, which are lifted from the answer keys — **so what you build against mocks is what ships.** Point at the real API by changing one base URL in the environment file once the core lands.
+**`ModuleNotFoundError: No module named 'agent'`** — run commands from the repo
+root with the virtualenv active, not from inside a subfolder.
+
+**`cannot reach Ollama at http://localhost:11434`** — the daemon isn't running.
+`ollama serve` on macOS; check the system tray on Windows.
+
+**`no DATABASE_URL`** — `.env` is missing, misnamed, or in the wrong directory.
+It belongs beside `README.md`.
+
+**Console loads but every answer says "Cannot answer this yet"** — you're on a
+backend without the rules engine. Restart with `AGENT_DATA=core`.
+
+**Page looks stale after an update** — hard-reload the browser
+(Cmd+Shift+R / Ctrl+Shift+R). Python changes need a server restart; page
+changes only need the reload.
 
 ---
 
-## Common
+## Where to read next
 
-```bash
-make test        # pytest + harness
-make demo        # boot everything, seed scenarios, open the console
-make lint
-```
-
-### Env vars
-| Var | Who | Notes |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Shashank | `.env`, gitignored. Never commit. |
-| `API_BASE` | Kiran | defaults to `http://localhost:5000` |
-
----
-
-## Working rhythm
-
-- Branch `feat/<owner>/<slug>`, small PRs, squash merge.
-- **`main` is always demoable.** If you break it, fixing it is your top priority.
-- Status pulse in [`../PROGRESS.md`](../PROGRESS.md) every four hours — four lines, one minute.
-- Stuck? Open a `blocker` issue immediately. Don't lose two hours being polite about it.
+1. [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md) — what the system actually does and why
+2. [`../agent/README.md`](../agent/README.md) — the advisor layer in detail
+3. [`RULES.md`](RULES.md) — the seven rules and the traps in them
+4. [`API_CONTRACT.md`](API_CONTRACT.md) — if you're building against the API
