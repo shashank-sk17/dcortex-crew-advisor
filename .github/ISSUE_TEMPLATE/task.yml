@@ -1,0 +1,39 @@
+name: Task
+description: A unit of build work
+labels: ["task"]
+body:
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Layer
+      options:
+        - L1/L2 — World & Legality (Kashifa)
+        - L2 — Reasoning & Evals (Gayathri)
+        - L3 — Advisor Agent (Shashank)
+        - L4 — Ops Console (Kiran)
+        - Docs / infra
+    validations: { required: true }
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options: ["0 — pre-clock", "1 — the 24h", "freeze"]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: What needs to exist when this is done.
+    validations: { required: true }
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: The concrete gate. Prefer a gold question, scenario ID, or expected number.
+      placeholder: "Q02 returns duty_hours_7d = 20.93 and headroom_hours = 39.07"
+    validations: { required: true }
+  - type: input
+    id: blocks
+    attributes:
+      label: Blocks / blocked by
+      placeholder: "Blocked by #3 (World loader)"

@@ -1,0 +1,24 @@
+name: Blocker
+description: You are stuck and it is costing the team time
+labels: ["blocker"]
+title: "[BLOCKED] "
+body:
+  - type: markdown
+    attributes:
+      value: "Raise this the moment you are stuck — not at the next status pulse. Blockers are the team's top priority."
+  - type: textarea
+    id: what
+    attributes:
+      label: What you are blocked on
+    validations: { required: true }
+  - type: input
+    id: needs
+    attributes:
+      label: Who or what would unblock you
+      placeholder: "Kashifa — the World loader shape for duty_clocks"
+    validations: { required: true }
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Are you working around it meanwhile?
+      placeholder: "Using the fixture in evals/fixtures/ so I'm not idle."

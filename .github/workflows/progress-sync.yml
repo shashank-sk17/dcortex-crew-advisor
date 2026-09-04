@@ -1,0 +1,96 @@
+name: progress-sync
+
+# Regenerates the Task Board in PROGRESS.md from GitHub Issues.
+# Everything between AUTO:BEGIN and AUTO:END is machine-owned — edit the issue, not the file.
+
+on:
+  issues:
+    types: [opened, closed, reopened, edited, assigned, unassigned, labeled, unlabeled]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: progress-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rebuild task board
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+
+          OWNERS = [
+              ("\U0001F9E0 Shashank", "Advisor Agent (L3)",        "shashank"),
+              ("\U0001F39B Kiran",    "Ops Console (L4)",          "kiran"),
+              ("⚖️ Kashifa","World & Legality (L1/L2)",  "kashifa"),
+              ("\U0001F30A Gayathri", "Reasoning & Evals (L2)",    "gayathri"),
+          ]
+
+          raw = subprocess.run(
+              ["gh", "issue", "list", "--repo", os.environ["REPO"], "--state", "all",
+               "--limit", "300", "--json",
+               "number,title,state,assignees,labels"],
+              capture_output=True, text=True, check=True).stdout
+          issues = json.loads(raw)
+
+          def owned_by(issue, key):
+              who = " ".join(a["login"].lower() for a in issue["assignees"])
+              tags = " ".join(l["name"].lower() for l in issue["labels"])
+              return key in who or key in tags
+
+          def bar(done, total):
+              if not total:
+                  return "░" * 10
+              filled = round(10 * done / total)
+              return "▓" * filled + "░" * (10 - filled)
+
+          blocks = []
+          for label, layer, key in OWNERS:
+              mine = [i for i in issues if owned_by(i, key)]
+              done = sum(1 for i in mine if i["state"] == "CLOSED")
+              blocks.append(f"### {label} — {layer}  {bar(done, len(mine))}  {done}/{len(mine)}\n")
+              if mine:
+                  blocks.append("| # | Task | State |")
+                  blocks.append("|---|---|---|")
+                  for i in sorted(mine, key=lambda x: x["number"]):
+                      blocked = any(l["name"].lower() == "blocker" for l in i["labels"])
+                      state = "✅" if i["state"] == "CLOSED" else ("\U0001F534" if blocked else "\U0001F7E1")
+                      blocks.append(f"| {i['number']} | {i['title']} | {state} |")
+              else:
+                  blocks.append("_No issues assigned yet._")
+              blocks.append("")
+
+          body = "\n".join(blocks).rstrip() + "\n"
+
+          p = "PROGRESS.md"
+          src = open(p, encoding="utf-8").read()
+          new = re.sub(
+              r"(<!-- AUTO:BEGIN.*?-->\n).*?(<!-- AUTO:END -->)",
+              lambda m: m.group(1) + "\n" + body + "\n" + m.group(2),
+              src, flags=re.S)
+
+          if new != src:
+              open(p, "w", encoding="utf-8").write(new)
+              print("PROGRESS.md updated")
+          else:
+              print("no change")
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name  "progress-sync"
+          git config user.email "actions@github.com"
+          git add PROGRESS.md
+          git diff --staged --quiet || git commit -m "chore: sync task board [skip ci]"
+          git push
