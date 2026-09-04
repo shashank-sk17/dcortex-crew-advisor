@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(touch agent/tests/__init__.py)",
+      "Bash(rm -f agent/.gitkeep)",
+      "Bash(.venv/bin/python -m pytest agent/tests/test_advisor.py::TestAdvisor::test_tier_one_answers_from_real_data agent/tests/test_router.py::TestJointPlanDetection -q)",
+      "Bash(.venv/bin/python -m pytest agent/tests/ -q)",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(.venv/bin/python -m pytest --doctest-modules agent/entities.py agent/router.py agent/verifier.py agent/llm.py agent/advisor.py -q)",
+      "Bash(.venv/bin/python -m agent.cli --entities \"Captain C-1042 calls in sick at 05:00Z on 15 Sep for P-2291 out of BLR\")",
+      "Bash(.venv/bin/python -m agent.cli --route-only \"Both A320 captains are sick at 00:30Z on 18 Sep. Give the optimal joint crewing plan.\")",
+      "Bash(.venv/bin/python -m agent.cli \"What does RULE-DUTY-02 say?\")",
+      "Bash(.venv/bin/python -m pytest -q)",
+      "Bash(.venv/bin/python -m pytest)",
+      "Bash(git pull *)",
+      "Bash(git -c user.name=shashank-sk17 commit -q -m ' *)"
+    ]
+  }
+}

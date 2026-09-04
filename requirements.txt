@@ -1,0 +1,13 @@
+# Runtime
+numpy>=1.26          # cosine index in agent/exemplars.py
+
+# Dev
+pytest>=8.0
+
+# Deliberately absent for now:
+#   anthropic        — agent/llm.py is a placeholder; no network calls yet
+#   flask            — api/ not started (issue #32)
+#   psycopg[binary]  — Postgres + pgvector for the audit log (DECISIONS.md #14)
+#
+# Deliberately absent for good (DECISIONS.md #1): the dataset is < 700 KB, so
+# no ORM, no Neo4j driver, no Mongo, no Celery.
