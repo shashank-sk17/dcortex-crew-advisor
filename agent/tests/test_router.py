@@ -181,3 +181,84 @@ class TestNoModelOnTheGoldSet:
         if not path.exists():
             pytest.skip("dataset not vendored")
         return json.loads(path.read_text())
+
+
+class TestDisruptionVocabulary:
+    """A controller stating that someone cannot fly is asking for cover,
+    however they phrase it. The gold questions only say "calls in sick", so a
+    router tuned on them alone missed almost everything real — "Captain of
+    BLR->BOM not available" fell through to a flight timetable.
+    """
+
+    @pytest.mark.parametrize(
+        "phrasing",
+        [
+            "Captain of BLR->BOM not available on 2026-09-17",
+            "skipper on the BOM run is out",
+            "my atr skipper just bailed on tomorrows rotation",
+            "C-1042 went sick", "C-1042 is off sick", "C-1042 no-show",
+            "C-1042 didn't show", "C-1042 failed to report",
+            "C-1042 can't fly tomorrow", "C-1042 unable to operate",
+            "C-1042 has been stood down", "C-1042 pulled from P-2291",
+            "C-1042 is timed out", "C-1042 maxed out on hours",
+            "C-1042 busted his limits", "C-1042 is fatigued",
+            "C-1042's licence expired", "C-1042 lost currency",
+            "C-1042 is grounded", "P-2291 is uncrewed",
+            "we're a man down on P-2291", "P-2291 needs a captain",
+            "no captain on DX412", "short a pilot for the morning bank",
+            "i need a warm body for the 0600 out of DEL",
+            "who else could sit in that left seat",
+            "get me a sub for C-1042", "backfill P-2291",
+            "who's available to cover DX412",
+        ],
+    )
+    def test_disruption_routes_to_tier_two(self, phrasing):
+        from agent.entities import extract
+
+        r = route_deterministic(phrasing, extract(phrasing))
+        assert r is not None, "fell through to the model"
+        assert r.tier is Tier.REPLACEMENT, f"got {r.intent} via {r.matched_rule}"
+
+    def test_disruption_with_an_impact_question_asks_what_breaks(self):
+        from agent.entities import extract
+
+        q = "C-1042 called in sick for P-2291. Which flights are affected?"
+        r = route_deterministic(q, extract(q))
+        assert r.intent is Intent.IMPACT_OF_EVENT
+
+    def test_two_disruptions_become_a_joint_plan(self):
+        from agent.entities import extract
+
+        q = "C-3940 is out on P-2205 and C-1938 is out on P-2212"
+        r = route_deterministic(q, extract(q))
+        assert r.intent is Intent.JOINT_PLAN
+
+    @pytest.mark.parametrize(
+        "listing",
+        ["Which certifications expire next month?",
+         "List all certifications expiring within 30 days of 2026-09-15.",
+         "Which flights depart DEL on 2026-09-15?"],
+    )
+    def test_listing_queries_are_not_disruptions(self, listing):
+        """`expired?` matched the bare "expire" in a listing query and routed
+        it as a disruption. Past tense only."""
+        from agent.entities import extract
+
+        r = route_deterministic(listing, extract(listing))
+        assert r.tier is Tier.LOOKUP, f"got {r.intent} via {r.matched_rule}"
+
+
+class TestDestinationFilter:
+    def test_two_stations_become_origin_and_destination(self):
+        from agent.advisor import _flight_filters
+        from agent.entities import extract
+
+        got = _flight_filters(extract("Captain of BLR->BOM not available on 2026-09-17"))
+        assert got == {"dep_station": "BLR", "arr_station": "BOM", "date": "2026-09-17"}
+
+    def test_one_station_leaves_destination_open(self):
+        from agent.advisor import _flight_filters
+        from agent.entities import extract
+
+        got = _flight_filters(extract("Which flights depart BLR on 2026-09-17?"))
+        assert "arr_station" not in got

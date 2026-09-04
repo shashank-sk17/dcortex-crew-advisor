@@ -37,6 +37,90 @@ def _p(*alts: str) -> re.Pattern[str]:
     return re.compile("|".join(alts), re.I)
 
 
+# --------------------------------------------------------------------------
+# Disruption vocabulary
+#
+# A controller stating that someone cannot fly is asking for cover, however
+# they phrase it. The gold questions only ever say "calls in sick", so a router
+# tuned on them alone misses almost everything real — "Captain of BLR->BOM not
+# available" fell through to a flight timetable.
+#
+# Grouped by how the desk actually talks, so gaps are visible.
+# --------------------------------------------------------------------------
+
+_SICK = (
+    r"\bsick\b", r"\bsick ?call\b", r"\bcall(s|ed|ing)? in\b", r"\bwent sick\b",
+    r"\bgone sick\b", r"\boff sick\b", r"\bunwell\b", r"\bill\b", r"\billness\b",
+    r"\bmedical\b.*\b(issue|problem)\b", r"\binjured\b", r"\bhurt\b",
+)
+
+_UNAVAILABLE = (
+    r"\bnot available\b", r"\bunavailable\b", r"\bno longer available\b",
+    r"\bcan'?t (fly|operate|make|do|take)\b", r"\bcannot (fly|operate|make|take)\b",
+    r"\bunable to (fly|operate|report|make)\b", r"\bunable\b",
+    r"\bno[- ]?show\b", r"\bdidn'?t show\b", r"\bfailed to report\b",
+    r"\babsent\b", r"\bmissing\b", r"\bawol\b",
+    r"\bis out\b", r"\bare out\b", r"\bout for\b", r"\bdropped out\b",
+    r"\bbailed\b", r"\bfell (out|through)\b", r"\bpulled\b", r"\bwithdrawn\b",
+    r"\btaken off\b", r"\bremoved from\b", r"\bstood down\b", r"\bstand down\b",
+)
+
+_OUT_OF_HOURS = (
+    r"\btimed? out\b", r"\btiming out\b", r"\bout of hours\b", r"\bran out of hours\b",
+    r"\bmaxed out\b", r"\bfatigued?\b", r"\bbust(ed|s)?\b", r"\bblown\b",
+    r"\bover (the )?limit\b", r"\bexceeded\b",
+)
+
+_NOT_LEGAL = (
+    # Past tense only. "expired" is a disruption; "which certifications expire
+    # next month" is a listing query, and `expired?` swallowed both.
+    r"\bexpired\b", r"\bhas expired\b",
+    r"\blapsed\b", r"\bout of date\b", r"\binvalid\b",
+    r"\bnot qualified\b", r"\bunqualified\b", r"\bnot rated\b", r"\bno rating\b",
+    r"\bout of currency\b", r"\blost currency\b", r"\bgrounded\b",
+    r"\bnon[- ]?compliant\b", r"\billegal\b",
+)
+
+_ROSTER_GAP = (
+    r"\buncrewed\b", r"\buncovered\b", r"\bunassigned\b", r"\bvacant\b",
+    r"\bshort[- ]?(crewed|staffed|a|of)?\b", r"\bunderstaffed\b",
+    r"\bgap\b", r"\bhole\b", r"\bopen (slot|seat|position)\b",
+    r"\bdown a\b", r"\ba man down\b", r"\bone short\b",
+    r"\bneeds? (a |an )?(captain|first officer|fo|pilot|crew|cover|someone|body)\b",
+    r"\bno (captain|first officer|fo|pilot|crew)\b",
+)
+
+_NEEDS_COVER = (
+    r"\bwho (can|could|should|else)\b", r"\bwho'?s (available|free|around)\b",
+    r"\bwho do i (use|call|send)\b", r"\breplacement\b", r"\bcover(ing)? (for|the|this|that)\b",
+    r"\bneed (a |an |some ?)?(cover|replacement|body|one|captain|fo|pilot|crew)\b",
+    r"\bfind (me )?(a |an |someone|somebody)\b", r"\bget me\b", r"\bwarm body\b",
+    r"\bstand[- ]?in\b", r"\bback[- ]?fill\b", r"\bsub(stitute)?\b", r"\bswap\b",
+    r"\bcall out\b", r"\bcallout\b", r"\bwho takes\b", r"\bwho'?ll (take|fly)\b",
+)
+
+_AIRCRAFT_EVENT = (
+    r"\baog\b", r"\btech(nical)? (issue|problem|delay|fault)\b", r"\bsnag\b",
+    r"\bdefect\b", r"\bunserviceable\b", r"\bu/?s\b", r"\bbroken\b",
+    r"\bdelayed?\b", r"\bslipp(ed|ing)\b", r"\brunning late\b",
+    r"\bcancel(l?ed|lation)?\b", r"\bscrubbed\b", r"\bdiverted?\b",
+    r"\bclosed?\b", r"\bclosure\b", r"\bshut\b", r"\bweather\b", r"\bwx\b",
+)
+
+DISRUPTION = _SICK + _UNAVAILABLE + _OUT_OF_HOURS + _NOT_LEGAL + _ROSTER_GAP
+DISRUPTION_RE = _p(*DISRUPTION)
+NEEDS_COVER_RE = _p(*_NEEDS_COVER)
+AIRCRAFT_EVENT_RE = _p(*_AIRCRAFT_EVENT)
+
+# A question word turns a bare disruption into a question about consequences
+# rather than a request for cover.
+ASKS_IMPACT_RE = _p(
+    r"\bwhich flights?\b", r"\bwhat (flights?|happens|is affected)\b",
+    r"\bhow many (flights?|passengers?|pax)\b", r"\baffected\b", r"\bat risk\b",
+    r"\bimpact\b", r"\bknock[- ]?on\b", r"\bdownstream\b",
+)
+
+
 RULES: tuple[Rule, ...] = (
     # ---- tier 3 -----------------------------------------------------------
     Rule(
@@ -86,20 +170,20 @@ RULES: tuple[Rule, ...] = (
            r"\bearliest .*\breport\b", r"\bmay report\b", r"\bwhen can .*report\b"),
         "legality",
     ),
-    Rule(
-        Intent.FIND_REPLACEMENT,
-        _p(r"\bwho (can|could|should) (cover|fly|operate|replace)\b",
-           r"\breplacement\b", r"\bwho do i use\b", r"\bcover(ing)? (for|the)\b",
-           r"\bfind (a |someone )?(cover|replacement)\b", r"\bstand ?in\b"),
-        "replacement",
-    ),
+    # Impact is checked before cover: a disruption plus "which flights" is a
+    # question about consequences, not a request for a name.
     Rule(
         Intent.IMPACT_OF_EVENT,
-        _p(r"\baffected\b", r"\buncrewed\b", r"\buncovered\b", r"\bat risk\b",
-           r"\bimmediately\b.*\bflights?\b", r"\bwhich flights\b.*\b(lose|lost)\b",
-           r"\bclosed\b", r"\bknock-?on\b"),
+        _p(r"\baffected\b", r"\bat risk\b", r"\bimmediately\b.*\bflights?\b",
+           r"\bwhich flights\b.*\b(lose|lost|uncrewed|uncovered)\b",
+           r"\bknock[- ]?on\b", r"\bdownstream\b", r"\bimpact\b",
+           r"\bclosure\b", r"\bcloses?\b.*\b\d{2}:\d{2}\b"),
         "impact",
     ),
+    Rule(Intent.FIND_REPLACEMENT, NEEDS_COVER_RE, "cover-request"),
+    # A bare statement that someone cannot fly IS a request for cover. This is
+    # the catch-all that "Captain of BLR->BOM not available" fell through.
+    Rule(Intent.FIND_REPLACEMENT, DISRUPTION_RE, "disruption"),
     # ---- tier 1 -----------------------------------------------------------
     Rule(
         Intent.LOOKUP_DUTY_CLOCK,
@@ -186,10 +270,7 @@ def _is_multi_event(text: str, ents: Entities) -> bool:
     Two crew ids alone is not enough ("can C-1042 cover for C-2087?" names two
     and is a single event), so require a disruption verb as well.
     """
-    disruption = re.search(
-        r"\bsick\b|\bcalls?(ed)? in\b|\bout\b|\bunavailable\b", text, re.I
-    )
-    if not disruption:
+    if not DISRUPTION_RE.search(text):
         return False
 
     named_twice = (
@@ -219,6 +300,16 @@ def route_deterministic(text: str, ents: Entities | None = None) -> Route | None
         # A ranking ask over two concurrent disruptions is a joint plan, even
         # when the word "joint" never appears.
         if intent is Intent.RANK_OPTIONS and multi:
+            intent = Intent.JOINT_PLAN
+            notes.append("upgraded to JOINT_PLAN: two concurrent events")
+
+        # A disruption plus an impact question asks what breaks, not who covers.
+        elif intent is Intent.FIND_REPLACEMENT and ASKS_IMPACT_RE.search(text):
+            intent = Intent.IMPACT_OF_EVENT
+            notes.append("IMPACT_OF_EVENT: disruption stated with an impact question")
+
+        # Two simultaneous disruptions are one joint problem, not two.
+        elif intent is Intent.FIND_REPLACEMENT and multi:
             intent = Intent.JOINT_PLAN
             notes.append("upgraded to JOINT_PLAN: two concurrent events")
 

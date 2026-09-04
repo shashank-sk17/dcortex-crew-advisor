@@ -93,6 +93,25 @@ def tools_for(intent: Intent, port: Any = None) -> list[dict[str, Any]]:
     return narrowed or schemas
 
 
+def _flight_filters(ents: Any) -> dict[str, Any]:
+    """Build a flight filter, honouring a destination when one is named.
+
+    "BLR->BOM" names two stations. Filtering on the first alone returns every
+    departure from BLR and silently drops half the question — which is exactly
+    what happened to "Captain of BLR->BOM not available".
+    """
+    filters: dict[str, Any] = {}
+    if ents.stations:
+        filters["dep_station"] = ents.stations[0]
+    if len(ents.stations) > 1:
+        filters["arr_station"] = ents.stations[1]
+    if ents.primary_date:
+        filters["date"] = ents.primary_date
+    if ents.flight_nos:
+        filters["flight_no"] = ents.flight_nos[0]
+    return filters
+
+
 def seed_calls(route: Route) -> list[ToolCall]:
     """First tool calls implied by the entities, before the model is consulted.
 
@@ -119,12 +138,7 @@ def seed_calls(route: Route) -> list[ToolCall]:
             add("lookup", entity="reserves", filters=filters)
 
         case Intent.LOOKUP_FLIGHT:
-            filters: dict[str, Any] = {}
-            if ents.stations:
-                filters["dep_station"] = ents.stations[0]
-            if ents.primary_date:
-                filters["date"] = ents.primary_date
-            add("lookup", entity="flights", filters=filters)
+            add("lookup", entity="flights", filters=_flight_filters(ents))
 
         case Intent.CHECK_LEGALITY if ents.primary_crew and ents.primary_pairing:
             add("check_legality",
@@ -134,6 +148,12 @@ def seed_calls(route: Route) -> list[ToolCall]:
             add("find_options",
                 pairing_id=ents.primary_pairing,
                 role=ents.roles[0] if ents.roles else "Captain")
+
+        case (Intent.FIND_REPLACEMENT | Intent.RANK_OPTIONS) if ents.stations:
+            # A disruption named by route rather than pairing — "captain of
+            # BLR->BOM is out". Identify the leg first; the pairing it belongs
+            # to is what `find_options` actually needs.
+            add("lookup", entity="flights", filters=_flight_filters(ents))
 
         case Intent.IMPACT_OF_EVENT if ents.primary_crew or ents.primary_pairing:
             add("ripple", event={
