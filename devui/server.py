@@ -59,6 +59,15 @@ def make_llm() -> tuple[Any, str]:
 
 
 def make_port() -> tuple[Any, str]:
+    if DATA_KIND in ("core", "engine"):
+        from core.port import CoreToolPort
+
+        try:
+            port = CoreToolPort()
+            port.world  # load now so a failure surfaces at startup, not mid-question
+            return port, "postgres + rules engine"
+        except Exception as exc:
+            return PlaceholderToolPort(), f"core failed ({exc}) — using json"
     if DATA_KIND == "fixtures":
         from agent.tools_fixtures import FixtureToolPort
 
