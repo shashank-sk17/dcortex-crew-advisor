@@ -14,6 +14,7 @@ the verifier proves the prose only repeats what the tools said.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from dataclasses import fields as dataclass_fields
 from typing import Any, Iterator
 
 from agent import config, explainer, verifier
@@ -22,15 +23,18 @@ from agent.prompts import system_prompt
 from agent.router import Route, route
 from agent.schemas import (
     AdvisorResponse,
+    BlastRadius,
     Confidence,
     ConsequenceAnswer,
+    FunnelStage,
     Intent,
     LookupAnswer,
+    Option,
     ReplacementAnswer,
     Tier,
     TraceEntry,
 )
-from agent.tools import TOOL_SCHEMAS, PlaceholderToolPort, ToolPort, dispatch
+from agent.tools import TOOL_SCHEMAS, PlaceholderToolPort, ToolPort, dispatch, schemas_for_port
 
 
 @dataclass(slots=True)
@@ -51,6 +55,8 @@ class Turn:
     iterations: int = 0
     verification: verifier.VerificationResult | None = None
     notes: list[str] = field(default_factory=list)
+    seen_calls: set[str] = field(default_factory=set)
+    repeats: int = 0
 
 
 # --------------------------------------------------------------------------
@@ -75,15 +81,35 @@ _INTENT_TOOLS: dict[Intent, tuple[str, ...]] = {
 }
 
 
-def tools_for(intent: Intent) -> list[dict[str, Any]]:
+def tools_for(intent: Intent, port: Any = None) -> list[dict[str, Any]]:
     """Narrow the toolset to what this intent can plausibly need.
 
     A tier-1 lookup does not get `joint_plan` in its schema list. Fewer, more
     relevant tools measurably improves selection and cuts prompt size.
     """
+    schemas = schemas_for_port(port) if port is not None else TOOL_SCHEMAS
     allowed = set(_INTENT_TOOLS.get(intent, ()))
-    narrowed = [t for t in TOOL_SCHEMAS if t["name"] in allowed]
-    return narrowed or TOOL_SCHEMAS
+    narrowed = [t for t in schemas if t["name"] in allowed]
+    return narrowed or schemas
+
+
+def _flight_filters(ents: Any) -> dict[str, Any]:
+    """Build a flight filter, honouring a destination when one is named.
+
+    "BLR->BOM" names two stations. Filtering on the first alone returns every
+    departure from BLR and silently drops half the question — which is exactly
+    what happened to "Captain of BLR->BOM not available".
+    """
+    filters: dict[str, Any] = {}
+    if ents.stations:
+        filters["dep_station"] = ents.stations[0]
+    if len(ents.stations) > 1:
+        filters["arr_station"] = ents.stations[1]
+    if ents.primary_date:
+        filters["date"] = ents.primary_date
+    if ents.flight_nos:
+        filters["flight_no"] = ents.flight_nos[0]
+    return filters
 
 
 def seed_calls(route: Route) -> list[ToolCall]:
@@ -112,12 +138,7 @@ def seed_calls(route: Route) -> list[ToolCall]:
             add("lookup", entity="reserves", filters=filters)
 
         case Intent.LOOKUP_FLIGHT:
-            filters: dict[str, Any] = {}
-            if ents.stations:
-                filters["dep_station"] = ents.stations[0]
-            if ents.primary_date:
-                filters["date"] = ents.primary_date
-            add("lookup", entity="flights", filters=filters)
+            add("lookup", entity="flights", filters=_flight_filters(ents))
 
         case Intent.CHECK_LEGALITY if ents.primary_crew and ents.primary_pairing:
             add("check_legality",
@@ -127,6 +148,20 @@ def seed_calls(route: Route) -> list[ToolCall]:
             add("find_options",
                 pairing_id=ents.primary_pairing,
                 role=ents.roles[0] if ents.roles else "Captain")
+
+        case (Intent.FIND_REPLACEMENT | Intent.RANK_OPTIONS) if ents.stations:
+            # A disruption named by route rather than pairing — "captain of
+            # BLR->BOM is out". Identify the leg first; the pairing it belongs
+            # to is what `find_options` actually needs.
+            add("lookup", entity="flights", filters=_flight_filters(ents))
+
+        case Intent.IMPACT_OF_EVENT if ents.primary_crew or ents.primary_pairing:
+            add("ripple", event={
+                "type": "SICK_CREW",
+                "crew_id": ents.primary_crew,
+                "pairing_id": ents.primary_pairing,
+                "reported_utc": ents.primary_date,
+            })
 
         case Intent.JOINT_PLAN if len(ents.pairing_ids) >= 2:
             add("joint_plan", events=[
@@ -141,6 +176,61 @@ def seed_calls(route: Route) -> list[ToolCall]:
 # --------------------------------------------------------------------------
 
 
+def followup_calls(route: Route, trace: list[TraceEntry]) -> list[ToolCall]:
+    """Calls derivable from what the seeds already returned.
+
+    A disruption named by route — "captain of BLR->BOM is out" — needs a leg
+    identified before cover can be found. The seed does that lookup, and the
+    flight id is then sitting in the trace; asking the model to carry it across
+    is asking it to do bookkeeping it is bad at. Left to itself, qwen3:8b
+    passed the literal string "BLR->BOM" as both flight_id and pairing_id.
+
+    So the deterministic layer does the hop it can see, and the model is left
+    with the part that actually needs judgement.
+    """
+    if route.intent not in (Intent.FIND_REPLACEMENT, Intent.RANK_OPTIONS):
+        return []
+    if any(e.tool == "find_options" for e in trace):
+        return []
+
+    flights = [
+        row
+        for entry in trace
+        if entry.tool == "lookup" and isinstance(entry.result, list)
+        for row in entry.result
+        if isinstance(row, dict) and "flight_id" in row
+    ]
+    if not flights:
+        return []
+
+    role = route.entities.roles[0] if route.entities.roles else "Captain"
+    return [ToolCall(
+        id="followup-0",
+        name="find_options",
+        args={"flight_id": flights[0]["flight_id"], "role": role},
+    )]
+
+
+def _coerce(cls: Any, rows: Any) -> list[Any]:
+    """Turn raw tool output into the typed objects the renderer expects.
+
+    Tools return plain JSON — from fixtures, from Postgres, and eventually
+    over HTTP from `core/`. Passing dicts straight through works right up
+    until something reads `stage.count` and gets an AttributeError, so the
+    conversion belongs here, at the one boundary where the answer object is
+    assembled. Unknown keys are dropped rather than raising: a backend that
+    adds a field must not break the UI.
+    """
+    fields = {f.name for f in dataclass_fields(cls)}
+    out = []
+    for row in rows or []:
+        if isinstance(row, cls):
+            out.append(row)
+        elif isinstance(row, dict):
+            out.append(cls(**{k: v for k, v in row.items() if k in fields}))
+    return out
+
+
 def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
     """Fold tool results into the typed body for this tier.
 
@@ -150,32 +240,46 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
 
     if route.tier is Tier.LOOKUP:
         rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
         for entry in trace:
             if entry.result is None:
                 continue
-            if isinstance(entry.result, list):
-                rows.extend(r for r in entry.result if isinstance(r, dict))
-            elif isinstance(entry.result, dict):
-                rows.append(entry.result)
+            found = entry.result if isinstance(entry.result, list) else [entry.result]
+            for row in found:
+                if not isinstance(row, dict):
+                    continue
+                # Deduplicate across calls. A seeded lookup and the model's own
+                # near-identical one both return the same rows; concatenating
+                # them doubles the count, and that doubled figure matches no
+                # tool output, so the verifier rightly rejects the answer.
+                key = repr(sorted(row.items(), key=str))
+                if key not in seen:
+                    seen.add(key)
+                    rows.append(row)
         return LookupAnswer(rows=rows)
 
     if route.tier is Tier.REPLACEMENT:
         found = results.get("find_options") or {}
         rippled = results.get("ripple") or {}
+        rec = _coerce(Option, [found["recommended"]]) if found.get("recommended") else []
         return ReplacementAnswer(
+            recommended=rec[0] if rec else None,
+            cancellation_multiple=found.get("cancellation_multiple", 0),
+            equal_cost_alternatives=found.get("equal_cost_alternatives", 0),
             uncovered_flights=rippled.get("uncovered_flights", []),
             at_risk_flights=rippled.get("at_risk_flights", []),
             passengers_affected=rippled.get("passengers", 0),
-            funnel=found.get("funnel", []),
-            options=found.get("options", []),
-            near_misses=found.get("near_misses", []),
+            funnel=_coerce(FunnelStage, found.get("funnel")),
+            options=_coerce(Option, found.get("options")),
+            near_misses=_coerce(Option, found.get("near_misses")),
             excluded=found.get("excluded", []),
         )
 
     found = results.get("find_options") or {}
+    blast = (results.get("ripple") or {}).get("blast_radius")
     return ConsequenceAnswer(
-        options=found.get("options", []),
-        blast_radius=results.get("ripple", {}).get("blast_radius"),
+        options=_coerce(Option, found.get("options")),
+        blast_radius=(_coerce(BlastRadius, [blast]) or [None])[0],
         world_diff=results.get("simulate"),
         joint_plan=results.get("joint_plan"),
     )
@@ -209,8 +313,24 @@ class Advisor:
 
     # -- the loop ---------------------------------------------------------
 
+    @staticmethod
+    def _signature(call: ToolCall) -> str:
+        return f"{call.name}:{sorted((call.args or {}).items())!r}"
+
     def _run_tools(self, calls: list[ToolCall], turn: Turn) -> None:
+        """Execute calls, skipping any already made this turn.
+
+        Small local models loop: llama3.1:8b will re-request an identical call
+        every iteration until the cap. The results are deterministic, so a
+        repeat adds nothing but latency and a duplicated trace row.
+        """
         for call in calls:
+            signature = self._signature(call)
+            if signature in turn.seen_calls:
+                turn.repeats += 1
+                continue
+            turn.seen_calls.add(signature)
+
             entry = dispatch(self.port, call.name, call.args)
             turn.trace.append(entry)
             if entry.error:
@@ -222,8 +342,10 @@ class Advisor:
 
         if seeds := seed_calls(turn.route):
             self._run_tools(seeds, turn)
+            if followups := followup_calls(turn.route, turn.trace):
+                self._run_tools(followups, turn)
 
-        tools = tools_for(turn.route.intent)
+        tools = tools_for(turn.route.intent, self.port)
         messages: list[dict[str, Any]] = [{"role": "user", "content": turn.query}]
 
         while turn.iterations < self.cfg.max_iterations:
@@ -236,7 +358,12 @@ class Advisor:
             )
             if not response.wants_tools:
                 break
+            before = len(turn.trace)
             self._run_tools(response.tool_calls, turn)
+            if len(turn.trace) == before:
+                # Every requested call was a repeat: the model is looping and
+                # has no new evidence to gather. Stop rather than burn the cap.
+                break
             messages.append({
                 "role": "assistant",
                 "content": [
@@ -295,8 +422,21 @@ class Advisor:
                 # renderer, which can only restate tool output, and say so
                 # rather than shipping an unsourced claim.
                 narrative = explainer.render(response)
-                response.confidence = Confidence.MEDIUM
-                response.unknowns.append(result.summary())
+                # Only ever lower confidence here. A rejected draft is bad
+                # news; it must not promote an answer that was already LOW
+                # because its tools failed.
+                if response.confidence is Confidence.HIGH:
+                    response.confidence = Confidence.MEDIUM
+                # Say what happened, not just that something failed. The answer
+                # on screen is the verified one; it is the model's discarded
+                # draft that was unsupported, and a bare "UNVERIFIED" makes the
+                # good answer look like the suspect one.
+                bad = ", ".join(c.value for c in result.unsupported)
+                response.unknowns.append(
+                    f"The model's draft claimed {bad}, which no tool output "
+                    f"supports. That draft was discarded — what is shown above "
+                    f"is rendered directly from the tool results."
+                )
 
         response.narrative = narrative
         response.citations = explainer.collect_citations(response)

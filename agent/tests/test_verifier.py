@@ -121,3 +121,103 @@ class TestEvidenceAndClaims:
     def test_summary_names_the_bad_claims(self):
         t = trace({"crew_id": "C-1042"})
         assert "C-9999" in verify("Use C-9999.", t).summary()
+
+
+class TestDatesAndTimes:
+    """A date is one claim, not three numbers.
+
+    Splitting 2026-09-15 into 2026/09/15 floods the ledger and, worse, would
+    let a wrong date pass on the strength of a matching year.
+    """
+
+    def test_date_verified_whole(self):
+        t = trace({"date": "2026-09-15"})
+        result = verify("Rostered on 2026-09-15.", t)
+        assert result.ok
+        assert [c.value for c in result.claims] == ["2026-09-15"]
+
+    def test_wrong_date_rejected(self):
+        t = trace({"date": "2026-09-15"})
+        assert not verify("Rostered on 2026-09-17.", t).ok
+
+    def test_year_alone_does_not_support_a_date(self):
+        t = trace({"note": "season 2026"})
+        assert not verify("Rostered on 2026-09-15.", t).ok
+
+    def test_date_components_do_not_pollute_the_number_index(self):
+        """Without stripping, '2026-09-15' would supply 2026 as evidence."""
+        t = trace({"date": "2026-09-15"})
+        assert not verify("The duty ran 2026 hours.", t).ok
+
+    def test_times_verified_whole(self):
+        t = trace({"window": "06:00-18:00"})
+        assert verify("On call 06:00 to 18:00.", t).ok
+
+
+class TestDerivedCounts:
+    def test_result_cardinality_is_evidence(self):
+        """"12 records" is derived from what a tool returned, not invented."""
+        t = trace([{"crew_id": f"C-{i:04d}"} for i in range(12)])
+        assert verify("12 records.", t).ok
+
+    def test_a_wrong_count_is_still_rejected(self):
+        t = trace([{"crew_id": f"C-{i:04d}"} for i in range(12)])
+        assert not verify("47 records.", t).ok
+
+
+class TestSummaryWording:
+    def test_untraced_claims_named(self):
+        assert "C-9999" in verify("Use C-9999.", trace({"crew_id": "C-1042"})).summary()
+
+    def test_no_tools_reads_as_no_source_not_as_zero_claims(self):
+        r = verify("Nothing to report.", [])
+        assert not r.ok
+        assert "no tool ran" in r.summary()
+
+    def test_sourced_but_silent_answer(self):
+        r = verify("Nothing to report.", trace({"crew_id": "C-1042"}))
+        assert r.ok and "nothing asserted" in r.summary()
+
+
+class TestPostgresScalarTypes:
+    """Postgres returns types Python's numeric tower does not cover.
+
+    Every one of these produced a false UNVERIFIED before it was handled.
+    """
+
+    def test_decimal_counts_as_a_number(self):
+        from decimal import Decimal
+
+        t = trace({"block_hours": Decimal("2.75"), "cost_inr": Decimal("18500")})
+        assert verify("Block time 2.75 hours at 18,500.", t).ok
+
+    def test_wrong_value_still_rejected_against_a_decimal(self):
+        from decimal import Decimal
+
+        assert not verify("Block time 9.99 hours.", trace({"block_hours": Decimal("2.75")})).ok
+
+    def test_datetime_matches_its_rendered_form(self):
+        import datetime as dt
+
+        t = trace({"last_rest_ended": dt.datetime(2026, 9, 13, 2, 0, tzinfo=dt.timezone.utc)})
+        assert verify("Rest ended 2026-09-13 at 02:00.", t).ok
+
+    def test_date_and_time_objects_indexed(self):
+        import datetime as dt
+
+        t = trace({"date": dt.date(2026, 9, 15), "start": dt.time(6, 0)})
+        assert verify("On 2026-09-15 from 06:00.", t).ok
+
+
+class TestErrorTextIsEvidence:
+    def test_id_named_in_a_tool_error_is_sourced(self):
+        """Explaining why a tool failed means repeating what it said. "no
+        fixture covers P-2218" makes P-2218 sourced, not invented."""
+        t = [TraceEntry(tool="find_options",
+                        error="UNRESOLVED_ENTITY: no fixture covers P-2218")]
+        assert verify("Cannot answer: no fixture covers P-2218.", t).ok
+
+    def test_an_id_that_appears_nowhere_still_fails(self):
+        t = [TraceEntry(tool="find_options",
+                        error="UNRESOLVED_ENTITY: no fixture covers P-2218")]
+        assert not verify("Cannot answer: no fixture covers P-9999.", t).ok

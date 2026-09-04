@@ -180,6 +180,9 @@ class LookupAnswer:
 @dataclass(slots=True)
 class ReplacementAnswer:
     kind: str = "replacement"
+    recommended: Option | None = None
+    cancellation_multiple: int = 0
+    equal_cost_alternatives: int = 0
     uncovered_flights: list[str] = field(default_factory=list)
     at_risk_flights: list[str] = field(default_factory=list)
     passengers_affected: int = 0

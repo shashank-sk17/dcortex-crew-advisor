@@ -1,0 +1,466 @@
+{
+ "scenario_id": "S6",
+ "title": "Two simultaneous captain sick calls",
+ "difficulty": "hard",
+ "event": {
+  "type": "MULTI_SICK",
+  "events": [
+   {
+    "crew_id": "C-3940",
+    "pairing_id": "P-2205",
+    "reported_utc": "2026-09-18T00:30:00Z"
+   },
+   {
+    "crew_id": "C-1938",
+    "pairing_id": "P-2212",
+    "reported_utc": "2026-09-18T00:30:00Z"
+   }
+  ],
+  "narrative": "At 00:30Z on 18 Sep, the captains of both VT-DXA (C-3940) and VT-DXB (C-1938) call in sick. One qualified reserve captain's window covers the early reports; the desk must allocate scarce cover across both pairings."
+ },
+ "tier": 3,
+ "answer": {
+  "kind": "consequence",
+  "options": [
+   {
+    "action": "Assign Captain C-3305 (reserve callout)",
+    "crew_id": "C-3305",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 18500,
+    "delay_hours": 0.0,
+    "rank": 1
+   },
+   {
+    "action": "Assign Captain C-1017 (day-off callout)",
+    "crew_id": "C-1017",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 2
+   },
+   {
+    "action": "Assign Captain C-1042 (day-off callout)",
+    "crew_id": "C-1042",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 3
+   },
+   {
+    "action": "Assign Captain C-1526 (day-off callout)",
+    "crew_id": "C-1526",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 4
+   },
+   {
+    "action": "Assign Captain C-2087 (day-off callout)",
+    "crew_id": "C-2087",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 5
+   },
+   {
+    "action": "Assign Captain C-2143 (day-off callout)",
+    "crew_id": "C-2143",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 6
+   },
+   {
+    "action": "Assign Captain C-3187 (day-off callout)",
+    "crew_id": "C-3187",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 7
+   },
+   {
+    "action": "Assign Captain C-3983 (day-off callout)",
+    "crew_id": "C-3983",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 8
+   },
+   {
+    "action": "Assign Captain C-5647 (day-off callout)",
+    "crew_id": "C-5647",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 9
+   },
+   {
+    "action": "Assign Captain C-5820 (day-off callout)",
+    "crew_id": "C-5820",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 10
+   },
+   {
+    "action": "Assign Captain C-5837 (day-off callout)",
+    "crew_id": "C-5837",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 11
+   },
+   {
+    "action": "Assign Captain C-2210 (reserve callout + deadhead from DEL (first departure delayed ~6.5h))",
+    "crew_id": "C-2210",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 60100,
+    "delay_hours": 6.5,
+    "rank": 12
+   },
+   {
+    "action": "Cancel all 4 flights of the pairing",
+    "crew_id": null,
+    "legal": true,
+    "rules_checked": [],
+    "cost_inr": 1000000,
+    "delay_hours": 0.0,
+    "rank": 13
+   }
+  ],
+  "joint_plan": {
+   "total_cost_inr": 42500,
+   "assign_dxa": {
+    "action": "Assign Captain C-3305 (reserve callout)",
+    "crew_id": "C-3305",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 18500,
+    "delay_hours": 0.0,
+    "rank": 1
+   },
+   "assign_dxb": {
+    "action": "Assign Captain C-1017 (day-off callout)",
+    "crew_id": "C-1017",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 24000,
+    "delay_hours": 0.0,
+    "rank": 2
+   },
+   "equal_cost_alternatives": 20,
+   "note": "The same crew member cannot cover both pairings; the optimal plan minimises total cost across both. Equal-cost mirror assignments (swapping which pairing each candidate covers) are equally correct."
+  },
+  "funnel": [
+   {
+    "stage": "considered",
+    "count": 25,
+    "dropped": 0,
+    "reason": ""
+   },
+   {
+    "stage": "qualified",
+    "count": 18,
+    "dropped": 7,
+    "reason": "no rating for the aircraft type"
+   },
+   {
+    "stage": "on call",
+    "count": 16,
+    "dropped": 2,
+    "reason": "reserve window does not cover report time"
+   },
+   {
+    "stage": "available",
+    "count": 13,
+    "dropped": 3,
+    "reason": "already rostered / double-booked"
+   },
+   {
+    "stage": "legal",
+    "count": 13,
+    "dropped": 0,
+    "reason": ""
+   }
+  ],
+  "excluded": [
+   {
+    "crew_id": "C-3310",
+    "reason": "reserve on-call window 06:00-18:00Z does not cover required report 01:30Z",
+    "rules": [],
+    "verdicts": []
+   },
+   {
+    "crew_id": "C-3315",
+    "reason": "reserve on-call window 03:00-15:00Z does not cover required report 01:30Z",
+    "rules": [],
+    "verdicts": []
+   },
+   {
+    "crew_id": "C-2091",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-1938",
+    "reason": "RULE-REST-04: only -10.75h rest before P-2212 on 2026-09-18 (downstream conflict); double-booked: COVER overlaps P-2212 on 2026-09-18",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -10.75h rest before P-2212 on 2026-09-18 (downstream conflict); double-booked: COVER overlaps P-2212 on 2026-09-18"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-1443",
+    "reason": "RULE-REST-04: only -10.25h rest before P-2219 on 2026-09-18 (downstream conflict); double-booked: COVER overlaps P-2219 on 2026-09-18",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -10.25h rest before P-2219 on 2026-09-18 (downstream conflict); double-booked: COVER overlaps P-2219 on 2026-09-18"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-1671",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-1600",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-3231",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-2221",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-3721",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-5392",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-5566",
+    "reason": "RULE-REST-04: only 10.0h rest before COVER on 2026-09-18 (rest conflict); RULE-REST-04: only -8.75h rest before P-2293 on 2026-09-18 (downstream conflict); double-booked: COVER overlaps P-2293 on 2026-09-18",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only 10.0h rest before COVER on 2026-09-18 (rest conflict); RULE-REST-04: only -8.75h rest before P-2293 on 2026-09-18 (downstream conflict); double-booked: COVER overlaps P-2293 on 2026-09-18"
+     }
+    ]
+   }
+  ]
+ },
+ "expected_choice": null
+}

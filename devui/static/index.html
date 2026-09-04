@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent console — dCortex Crew Ops Advisor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#101720; --panel:#161e29; --raised:#1b2532;
+  --line:#25313f; --line-hi:#38485a;
+  --ink:#dae2ec; --dim:#8a9aab; --mute:#5e6e7f;
+  --amber:#f2a93b; --teal:#45c0a4; --red:#e2615a; --violet:#9584e0;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--ground);color:var(--ink);
+  font:400 13px/1.55 var(--sans);
+  -webkit-font-smoothing:antialiased;
+}
+button,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+/* ─── shell ─────────────────────────────────────────────── */
+.shell{display:grid;grid-template-columns:290px 1fr;height:100vh}
+@media(max-width:900px){.shell{grid-template-columns:1fr;height:auto}}
+
+/* ─── rail ──────────────────────────────────────────────── */
+.rail{
+  background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0;
+}
+.brand{padding:18px 20px 16px;border-bottom:1px solid var(--line)}
+.brand h1{margin:0;font:600 15px/1.2 var(--sans);letter-spacing:-.01em}
+.brand p{margin:5px 0 0;color:var(--mute);font:400 12px/1.4 var(--mono)}
+
+.ask{padding:16px 20px;border-bottom:1px solid var(--line)}
+.ask textarea{
+  width:100%;min-height:78px;resize:vertical;padding:10px 11px;
+  background:var(--ground);border:1px solid var(--line-hi);border-radius:3px;
+  font:400 12.5px/1.5 var(--mono);
+}
+.ask textarea::placeholder{color:var(--mute)}
+.ask textarea:focus{border-color:var(--amber);outline:none}
+.run{
+  margin-top:9px;width:100%;padding:9px;cursor:pointer;
+  background:var(--amber);color:#14100a;border:0;border-radius:3px;
+  font:600 12.5px var(--sans);
+}
+.run:hover{background:#ffbc4d}
+.run:disabled{background:var(--line-hi);color:var(--mute);cursor:wait}
+.hint{margin:7px 0 0;color:var(--mute);font:400 11px var(--mono)}
+
+.gold{flex:1;overflow-y:auto;padding:14px 0 24px;min-height:0}
+.tier-head{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:12px 20px 6px;color:var(--dim);
+  font:500 12px var(--sans);
+}
+.tier-head b{color:var(--ink);font-weight:600}
+.tier-head span{color:var(--mute);font:400 11px var(--mono)}
+.q{
+  display:block;width:100%;text-align:left;cursor:pointer;
+  padding:6px 20px 6px 20px;background:none;border:0;border-left:2px solid transparent;
+  color:var(--dim);font:400 12px/1.45 var(--sans);
+}
+.q:hover{background:var(--raised);color:var(--ink)}
+.q[aria-current="true"]{border-left-color:var(--amber);background:var(--raised);color:var(--ink)}
+.q code{color:var(--mute);font:500 11px var(--mono);margin-right:7px}
+.q.mismatch code{color:var(--red)}
+
+/* ─── main ──────────────────────────────────────────────── */
+.main{overflow-y:auto;min-height:0;display:flex;flex-direction:column}
+.status{
+  display:flex;gap:22px;align-items:center;flex-wrap:wrap;
+  padding:12px 26px;border-bottom:1px solid var(--line);
+  background:var(--panel);font:400 11.5px var(--mono);color:var(--dim);
+}
+.status b{color:var(--ink);font-weight:500}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:7px;vertical-align:1px}
+.dot.on{background:var(--teal)} .dot.off{background:var(--violet)}
+.timing{margin-left:auto;color:var(--amber);font:500 11.5px var(--mono)}
+
+/* ─── pipeline strip: the instrument ────────────────────── */
+.strip{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--line)}
+@media(max-width:760px){.strip{grid-template-columns:1fr}}
+.stage{
+  position:relative;text-align:left;cursor:pointer;
+  padding:16px 18px 15px;background:var(--ground);
+  border:0;border-right:1px solid var(--line);border-bottom:2px solid var(--line);
+}
+.stage:last-child{border-right:0}
+.stage:hover{background:var(--panel)}
+.stage[aria-expanded="true"]{background:var(--panel);border-bottom-color:var(--amber)}
+.stage.ok{border-bottom-color:var(--teal)}
+.stage.degraded{border-bottom-color:var(--violet)}
+.stage.failed{border-bottom-color:var(--red)}
+.stage.skipped{border-bottom-color:var(--line)}
+.stage.idle{opacity:.45}
+.stage-n{color:var(--mute);font:500 10.5px var(--mono)}
+.stage-name{margin:3px 0 5px;font:600 13px var(--sans);letter-spacing:-.01em}
+.stage-sum{color:var(--dim);font:400 11.5px/1.45 var(--mono);word-break:break-word}
+.stage.ok .stage-sum{color:var(--teal)}
+.stage.failed .stage-sum{color:var(--red)}
+.stage.degraded .stage-sum{color:var(--violet)}
+
+.detail{
+  background:var(--panel);border-bottom:1px solid var(--line);
+  padding:16px 26px 20px;
+}
+.detail pre{
+  margin:0;padding:13px 15px;overflow-x:auto;
+  background:var(--ground);border:1px solid var(--line);border-radius:3px;
+  font:400 12px/1.6 var(--mono);color:var(--dim);
+}
+
+/* ─── panes ─────────────────────────────────────────────── */
+.panes{display:grid;grid-template-columns:1fr 420px;flex:1;min-height:0}
+@media(max-width:1150px){.panes{grid-template-columns:1fr}}
+.pane{padding:22px 26px 40px}
+.pane+.pane{border-left:1px solid var(--line);background:var(--panel)}
+@media(max-width:1150px){.pane+.pane{border-left:0;border-top:1px solid var(--line)}}
+
+.sec{margin-bottom:26px}
+.sec>h2{
+  margin:0 0 10px;padding-bottom:7px;border-bottom:1px solid var(--line);
+  font:600 12px var(--sans);color:var(--dim);letter-spacing:.01em;
+}
+.answer{
+  margin:0;padding:16px 18px;white-space:pre-wrap;
+  background:var(--panel);border:1px solid var(--line);
+  border-left:2px solid var(--amber);border-radius:0 3px 3px 0;
+  font:400 12.5px/1.7 var(--mono);
+}
+.panes .pane+.pane .answer{background:var(--ground)}
+
+/* ─── ledger ────────────────────────────────────────────── */
+.ledger{width:100%;border-collapse:collapse;font:400 12px var(--mono)}
+.ledger th{
+  text-align:left;padding:0 10px 7px 0;border-bottom:1px solid var(--line);
+  color:var(--mute);font:500 11px var(--sans);
+}
+.ledger td{padding:6px 10px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.ledger tr:last-child td{border-bottom:0}
+.ledger .val{color:var(--ink)}
+.ledger .src{color:var(--mute);font-size:11.5px}
+.ok-mark{color:var(--teal)} .bad-mark{color:var(--red)}
+.ledger tr.bad .val{color:var(--red)}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{
+  padding:3px 8px;background:var(--ground);border:1px solid var(--line-hi);
+  border-radius:2px;font:400 11.5px var(--mono);color:var(--dim);
+}
+.chip b{color:var(--amber);font-weight:500}
+.panes .pane+.pane .chip{background:var(--panel)}
+
+.call{
+  padding:9px 0;border-bottom:1px solid var(--line);
+  font:400 11.5px/1.5 var(--mono);
+}
+.call:last-child{border-bottom:0}
+.call-h{display:flex;justify-content:space-between;gap:12px}
+.call-h b{color:var(--ink);font-weight:500}
+.call-h em{font-style:normal;color:var(--mute);white-space:nowrap}
+.call-args{color:var(--mute);word-break:break-all;margin-top:2px}
+.call-err{color:var(--red);margin-top:3px}
+
+.note{
+  padding:9px 12px;margin-bottom:7px;border-radius:3px;
+  background:rgba(149,132,224,.09);border-left:2px solid var(--violet);
+  color:var(--dim);font:400 11.5px/1.5 var(--mono);
+}
+.note.bad{background:rgba(226,97,90,.09);border-left-color:var(--red)}
+
+.empty{color:var(--mute);font:400 12px/1.6 var(--mono)}
+.lede{margin:0 0 14px;max-width:62ch;color:var(--dim);font:400 13px/1.65 var(--sans)}
+.lede em{color:var(--violet);font-style:normal}
+.lede code{font:400 12px var(--mono);color:var(--ink)}
+.legend{margin:0 0 16px;display:grid;grid-template-columns:auto 1fr;gap:7px 14px;align-items:baseline;max-width:62ch}
+.legend dt{font:500 12px var(--mono)}
+.legend dd{margin:0;color:var(--dim);font:400 12.5px/1.55 var(--sans)}
+.legend dd code{font:400 11.5px var(--mono);color:var(--ink)}
+.k-teal{color:var(--teal)} .k-violet{color:var(--violet)} .k-red{color:var(--red)}
+.spin::after{
+  content:"";display:inline-block;width:8px;height:8px;margin-left:8px;
+  border:1.5px solid var(--mute);border-top-color:var(--amber);border-radius:50%;
+  animation:spin .7s linear infinite;vertical-align:-1px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="rail">
+    <div class="brand">
+      <h1>Agent console</h1>
+      <p>dCortex Crew Ops Advisor · L3</p>
+    </div>
+
+    <div class="ask">
+      <textarea id="q" placeholder="Captain C-1042 called in sick for P-2291. Who do I use?" spellcheck="false"></textarea>
+      <button class="run" id="run">Run pipeline</button>
+      <p class="hint">Cmd + Enter to run</p>
+    </div>
+
+    <nav class="gold" id="gold" aria-label="Gold questions"></nav>
+  </aside>
+
+  <main class="main">
+    <div class="status" id="status"><span id="timing" class="timing" hidden></span></div>
+
+    <div class="strip" id="strip"></div>
+    <div class="detail" id="detail" hidden></div>
+
+    <div class="panes">
+      <div class="pane">
+        <section class="sec" id="intro">
+          <h2>What this shows</h2>
+          <p class="lede">A question travels the five stages above. Each one reports what it
+          did, and clicking a stage opens its full output.</p>
+          <dl class="legend">
+            <dt class="k-teal">ok</dt><dd>Stage ran on real data.</dd>
+            <dt class="k-violet">degraded</dt><dd>Stage ran, but something under it is still a placeholder — the model, or a tool that <code>core/</code> has not implemented.</dd>
+            <dt class="k-red">failed</dt><dd>The verifier found a claim the tool trace does not support. The answer is withheld.</dd>
+          </dl>
+          <p class="lede">Tier&nbsp;2 and&nbsp;3 questions will show <em>degraded</em> until the
+          legality engine lands. That is deliberate: an unbuilt tool errors rather than
+          returning a plausible number.</p>
+        </section>
+        <section class="sec" id="answer-sec" hidden>
+          <h2>Answer</h2>
+          <pre class="answer" id="answer"></pre>
+        </section>
+        <section class="sec" id="notes-sec" hidden>
+          <h2>Flags</h2>
+          <div id="notes"></div>
+        </section>
+        <section class="sec">
+          <h2>Entities extracted</h2>
+          <div class="chips" id="entities"><span class="empty">—</span></div>
+        </section>
+      </div>
+
+      <div class="pane">
+        <section class="sec">
+          <h2>Verifier ledger</h2>
+          <div id="ledger"><p class="empty">Every identifier and number in the answer, checked against the tool trace.</p></div>
+        </section>
+        <section class="sec">
+          <h2>Tool trace</h2>
+          <div id="trace"><p class="empty">—</p></div>
+        </section>
+        <section class="sec">
+          <h2>Citations</h2>
+          <div class="chips" id="cites"><span class="empty">—</span></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const el = (t, c, txt) => { const n = document.createElement(t); if (c) n.className = c; if (txt != null) n.textContent = txt; return n; };
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+const STAGE_KEYS = ['router','planner','tools','verifier','explainer'];
+const STAGE_NAMES = { router:'Router', planner:'Planner', tools:'Tool loop', verifier:'Verifier', explainer:'Explainer' };
+let current = null, openStage = null;
+
+/* ── build state ─────────────────────────────────────────── */
+async function loadState() {
+  const s = await (await fetch('/api/state')).json();
+  const live = s.tools.filter(t => t.live).length;
+  const bar = $('#status');
+  const keep = $('#timing');
+  bar.innerHTML = '';
+
+  const item = (on, label, value) => {
+    const d = el('span');
+    d.append(Object.assign(el('span', 'dot ' + (on ? 'on' : 'off')), {}));
+    d.append(document.createTextNode(label + ' '));
+    d.append(el('b', null, value));
+    return d;
+  };
+  bar.append(
+    item(s.llm.live, 'model', s.llm.model),
+    item(s.data && s.data.live, 'data', s.data ? s.data.source : 'json'),
+    item(live === s.tools.length, 'tools', `${live}/${s.tools.length} live`),
+    item(s.dataset.present, 'gold', `${s.dataset.exemplars} questions`)
+  );
+  if (keep) bar.append(keep);
+}
+
+/* ── gold questions ──────────────────────────────────────── */
+async function loadGold() {
+  const qs = await (await fetch('/api/questions')).json();
+  const nav = $('#gold');
+  nav.innerHTML = '';
+
+  for (const tier of [1, 2, 3]) {
+    const rows = qs.filter(q => q.tier === tier);
+    const label = { 1:'Lookup', 2:'Replacement', 3:'Consequence' }[tier];
+    const head = el('div', 'tier-head');
+    head.append(el('b', null, `Tier ${tier} — ${label}`), el('span', null, String(rows.length)));
+    nav.append(head);
+
+    for (const q of rows) {
+      const b = el('button', 'q' + (q.routed_tier !== q.tier ? ' mismatch' : ''));
+      b.append(el('code', null, q.id), document.createTextNode(q.prompt));
+      b.title = q.intent + (q.routed_tier !== q.tier ? ` — routed to tier ${q.routed_tier}` : '');
+      b.onclick = () => { $('#q').value = q.prompt; run(b); };
+      nav.append(b);
+    }
+  }
+}
+
+/* ── pipeline strip ──────────────────────────────────────── */
+function renderStrip(stages) {
+  const strip = $('#strip');
+  strip.innerHTML = '';
+  STAGE_KEYS.forEach((key, i) => {
+    const s = stages ? stages.find(x => x.key === key) : null;
+    const b = el('button', 'stage ' + (s ? s.status : 'idle'));
+    b.setAttribute('aria-expanded', String(openStage === key));
+    b.append(
+      el('div', 'stage-n', String(i + 1).padStart(2, '0')),
+      el('div', 'stage-name', STAGE_NAMES[key]),
+      el('div', 'stage-sum', s ? s.summary : 'not run')
+    );
+    if (s) b.onclick = () => toggleStage(key);
+    strip.append(b);
+  });
+}
+
+function toggleStage(key) {
+  openStage = openStage === key ? null : key;
+  const box = $('#detail');
+  if (!openStage || !current) { box.hidden = true; renderStrip(current?.stages); return; }
+  const s = current.stages.find(x => x.key === openStage);
+  box.hidden = false;
+  box.innerHTML = `<pre>${esc(JSON.stringify(s.detail, null, 2))}</pre>`;
+  renderStrip(current.stages);
+}
+
+/* ── panes ───────────────────────────────────────────────── */
+function renderEntities(ents) {
+  const box = $('#entities');
+  box.innerHTML = '';
+  const keys = Object.keys(ents || {});
+  if (!keys.length) { box.append(el('span', 'empty', 'none found')); return; }
+  for (const k of keys) {
+    const c = el('chip' === 'x' ? 'span' : 'span', 'chip');
+    c.append(el('b', null, k.replace(/_/g, ' ') + ' '), document.createTextNode([].concat(ents[k]).join(', ')));
+    box.append(c);
+  }
+}
+
+function renderLedger(v) {
+  const box = $('#ledger');
+  box.innerHTML = '';
+  const claims = v.detail.claims || [];
+
+  if (!claims.length) {
+    box.append(el('p', 'empty', v.detail.ok
+      ? 'No checkable claims in this answer.'
+      : 'No claims extracted — see flags.'));
+    return;
+  }
+
+  const t = el('table', 'ledger');
+  const head = el('tr');
+  ['Claim', 'Source', ''].forEach(h => head.append(el('th', null, h)));
+  t.append(head);
+
+  for (const c of claims) {
+    const tr = el('tr', c.supported ? '' : 'bad');
+    tr.append(
+      el('td', 'val', c.value),
+      el('td', 'src', c.source || '—'),
+      el('td', c.supported ? 'ok-mark' : 'bad-mark', c.supported ? '✓' : '✕')
+    );
+    t.append(tr);
+  }
+  box.append(t);
+}
+
+function renderTrace(stage) {
+  const box = $('#trace');
+  box.innerHTML = '';
+  const calls = stage.detail.calls || [];
+  if (!calls.length) { box.append(el('p', 'empty', 'No tools were called.')); return; }
+
+  for (const c of calls) {
+    const d = el('div', 'call');
+    const h = el('div', 'call-h');
+    h.append(el('b', null, c.tool), el('em', null, c.error ? 'error' : c.ms + 'ms'));
+    d.append(h, el('div', 'call-args', JSON.stringify(c.args)));
+    if (c.error) d.append(el('div', 'call-err', c.error));
+    box.append(d);
+  }
+}
+
+function renderNotes(notes) {
+  const sec = $('#notes-sec'), box = $('#notes');
+  box.innerHTML = '';
+  if (!notes || !notes.length) { sec.hidden = true; return; }
+  sec.hidden = false;
+  for (const n of notes) box.append(el('div', 'note' + (/UNVERIFIED/.test(n) ? ' bad' : ''), n));
+}
+
+function renderCites(cites) {
+  const box = $('#cites');
+  box.innerHTML = '';
+  if (!cites.length) { box.append(el('span', 'empty', 'none')); return; }
+  for (const c of cites) {
+    const s = el('span', 'chip');
+    s.append(el('b', null, c.kind + ' '), document.createTextNode(c.id));
+    box.append(s);
+  }
+}
+
+/* ── run ─────────────────────────────────────────────────── */
+async function run(button) {
+  const query = $('#q').value.trim();
+  if (!query) return;
+  history.replaceState(null, '', '#q=' + encodeURIComponent(query));
+
+  document.querySelectorAll('.q').forEach(b => b.removeAttribute('aria-current'));
+  if (button) button.setAttribute('aria-current', 'true');
+
+  const btn = $('#run');
+  btn.disabled = true;
+  btn.classList.add('spin');
+  btn.textContent = 'Running';
+  openStage = null;
+  $('#detail').hidden = true;
+
+  try {
+    const res = await fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      $('#answer').textContent = data.traceback || data.error;
+      renderStrip(null);
+      return;
+    }
+
+    current = data;
+    if (data.elapsed_ms != null) {
+      const secs = (data.elapsed_ms / 1000).toFixed(1);
+      const calls = (data.stages.find(x => x.key === 'tools')?.detail.calls || []).length;
+      $('#timing').textContent = `${secs}s · ${calls} tool call${calls === 1 ? '' : 's'}`;
+      $('#timing').hidden = false;
+    }
+    renderStrip(data.stages);
+    $('#intro').hidden = true;
+    $('#answer-sec').hidden = false;
+    $('#answer').textContent = data.narrative || '(no narrative)';
+    renderEntities(data.entities);
+    renderLedger(data.stages.find(s => s.key === 'verifier'));
+    renderTrace(data.stages.find(s => s.key === 'tools'));
+    renderNotes(data.unknowns);
+    renderCites(data.citations);
+  } catch (e) {
+    $('#answer').textContent = 'Request failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('spin');
+    btn.textContent = 'Run pipeline';
+  }
+}
+
+$('#run').onclick = () => run(null);
+$('#q').addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') run(null);
+});
+
+renderStrip(null);
+loadState();
+loadGold();
+
+/* #q=... deep-links a run, so a failing case can be shared as a URL */
+const deep = new URLSearchParams(location.hash.slice(1)).get('q');
+if (deep) { $('#q').value = deep; run(null); }
+</script>
+</body>
+</html>

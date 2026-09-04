@@ -192,3 +192,325 @@ class TestToolSchemas:
         port = PlaceholderToolPort()
         for name in TOOL_NAMES:
             assert callable(getattr(port, name, None)), name
+
+
+class TestToolLoopDeduplication:
+    """Small local models re-request identical calls until the cap.
+
+    Observed with llama3.1:8b: nine identical duty_clock calls for one
+    question. Results are deterministic, so a repeat buys nothing.
+    """
+
+    def test_identical_calls_run_once(self):
+        from agent.llm import LLMResponse, PlaceholderLLM, ToolCall
+
+        same = ToolCall(id="x", name="explain_rule", args={"rule_id": "RULE-DUTY-02"})
+        llm = PlaceholderLLM([
+            LLMResponse(tool_calls=[same], stop_reason="tool_use"),
+            LLMResponse(tool_calls=[same], stop_reason="tool_use"),
+            LLMResponse(text="done"),
+        ])
+        r = Advisor(llm=llm).ask("What does RULE-DUTY-02 say?")
+        assert [e.tool for e in r.trace] == ["explain_rule"]
+
+    def test_loop_stops_when_every_call_is_a_repeat(self):
+        from agent.llm import LLMResponse, PlaceholderLLM, ToolCall
+
+        same = ToolCall(id="x", name="explain_rule", args={"rule_id": "RULE-FDP-01"})
+        llm = PlaceholderLLM([LLMResponse(tool_calls=[same], stop_reason="tool_use")] * 20)
+        Advisor(llm=llm).ask("What does RULE-FDP-01 say?")
+        assert len(llm.calls) < 5, "should break out, not burn the iteration cap"
+
+
+class TestLookupIsNeverPolished:
+    def test_lookup_uses_the_template_verbatim(self):
+        """llama3.1:8b answered "what does RULE-DUTY-02 say?" with an invented
+        situation — a crew that had exceeded its limits. Nothing existed to
+        exceed anything. The verifier passed it because the fabrication was
+        narrative, not numeric."""
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+        from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier
+
+        liar = PlaceholderLLM([LLMResponse(text="The crew has exceeded its duty limits.")])
+        resp = AdvisorResponse(tier=Tier.LOOKUP, intent=Intent.EXPLAIN_RULE,
+                               answer=LookupAnswer(rows=[{"rule_id": "RULE-DUTY-02"}]))
+        assert explainer.polish(resp, liar) == explainer.render(resp)
+        assert llm_unused(liar)
+
+
+def llm_unused(llm) -> bool:
+    return not llm.calls
+
+
+class TestUnavailableCapability:
+    """A missing tool must never read as a finding about the operation."""
+
+    def _resp(self, body):
+        from agent.schemas import AdvisorResponse, Intent, Tier, TraceEntry
+        return AdvisorResponse(
+            tier=Tier.REPLACEMENT, intent=Intent.IMPACT_OF_EVENT, answer=body,
+            trace=[TraceEntry(tool="ripple", error="INTERNAL: ripple: needs the rules engine in core/")],
+        )
+
+    def test_empty_replacement_names_the_gap(self):
+        from agent import explainer
+        from agent.schemas import ReplacementAnswer
+
+        out = explainer.render(self._resp(ReplacementAnswer()))
+        assert "Cannot answer this yet" in out
+        assert "ripple" in out
+        assert "No legal option found" not in out, "asserts a fact never checked"
+
+    def test_empty_consequence_is_never_blank(self):
+        from agent import explainer
+        from agent.schemas import ConsequenceAnswer
+
+        assert explainer.render(self._resp(ConsequenceAnswer())).strip()
+
+    def test_no_legal_option_only_after_a_real_search(self):
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, FunnelStage, Intent, ReplacementAnswer, Tier
+
+        searched = AdvisorResponse(
+            tier=Tier.REPLACEMENT, intent=Intent.FIND_REPLACEMENT,
+            answer=ReplacementAnswer(funnel=[FunnelStage(stage="legal", count=0, dropped=12,
+                                                         reason="rule breach")]),
+        )
+        assert "No legal option found" in explainer.render(searched)
+
+
+class TestConfidenceOrdering:
+    def test_verifier_rejection_never_raises_confidence(self):
+        """A failed tool means LOW. A rejected draft is also bad news, so it
+        must not promote the answer to MEDIUM on its way past."""
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        liar = PlaceholderLLM([LLMResponse(text="Use C-9999 for 47,000.")] * 4)
+        r = Advisor(llm=liar).ask("If C-2087 covers P-2291, does any rule breach?")
+        assert r.confidence is Confidence.LOW
+
+
+class TestFilterGuardRails:
+    """Measured on qwen3:8b: 12 of 16 tier-1 questions failed on an invented
+    column name. The guesses were semantically right under another name, so
+    the fix is to advertise the real names and alias the near-misses."""
+
+    def test_schema_advertises_real_field_names(self):
+        from agent.tools import schemas_for_port
+
+        lookup = [t for t in schemas_for_port(PlaceholderToolPort())
+                  if t["name"] == "lookup"][0]
+        desc = lookup["input_schema"]["properties"]["filters"]["description"]
+        assert "dep_station" in desc and "valid_to" in desc
+
+    def test_schema_falls_back_when_port_cannot_describe_itself(self):
+        from agent.tools import TOOL_SCHEMAS, schemas_for_port
+
+        assert schemas_for_port(object()) is TOOL_SCHEMAS
+
+    @pytest.mark.parametrize(
+        "guess,real",
+        [("departure", "dep_station"), ("origin", "dep_station"),
+         ("destination", "arr_station"), ("crew", "crew_id"),
+         ("expiry_date", "valid_to"), ("flight", "flight_no"),
+         ("pairing", "pairing_id")],
+    )
+    def test_near_miss_aliased_to_the_real_field(self, guess, real):
+        from agent.tools import resolve_filters
+
+        assert resolve_filters("flights", {guess: "X"}, {real}) == {real: "X"}
+
+    def test_alias_is_case_and_space_tolerant(self):
+        from agent.tools import resolve_filters
+
+        assert resolve_filters("flights", {"Departure Station": "DEL"},
+                               {"dep_station"}) == {"dep_station": "DEL"}
+
+    def test_unknown_field_rejected_naming_the_valid_ones(self):
+        from agent.tools import ToolError, resolve_filters
+
+        with pytest.raises(ToolError) as exc:
+            resolve_filters("flights", {"wingspan": 30}, {"dep_station", "date"})
+        assert "dep_station" in str(exc.value) and "date" in str(exc.value)
+
+    def test_alias_only_applies_when_the_target_exists(self):
+        """`crew` must not become `crew_id` on a table without that column."""
+        from agent.tools import ToolError, resolve_filters
+
+        with pytest.raises(ToolError):
+            resolve_filters("costs", {"crew": "C-1042"}, {"currency"})
+
+    def test_aliases_work_end_to_end_through_the_port(self):
+        rows = PlaceholderToolPort().lookup("flights", {"departure": "DEL"})
+        assert rows and all(r["dep_station"] == "DEL" for r in rows)
+
+
+class TestRendererNeverComputes:
+    """The 'LLM never calculates' rule binds the renderer too.
+
+    A 21-row lookup printed "… and 11 more". 11 appears in no tool output, so
+    the verifier rejected the whole answer — correctly.
+    """
+
+    def _long(self):
+        from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier, TraceEntry
+
+        rows = [{"crew_id": f"C-{1000+i}"} for i in range(21)]
+        return AdvisorResponse(
+            tier=Tier.LOOKUP, intent=Intent.LOOKUP_CREW, answer=LookupAnswer(rows=rows),
+            trace=[TraceEntry(tool="lookup", result=rows)],
+        )
+
+    def test_truncation_states_no_derived_number(self):
+        from agent import explainer
+
+        out = explainer.render(self._long())
+        assert "11 more" not in out
+        assert "(list truncated)" in out
+
+    def test_truncated_listing_verifies(self):
+        from agent import explainer
+        from agent.verifier import verify
+
+        r = self._long()
+        assert verify(explainer.render(r), r.trace).ok
+
+    def test_total_is_still_reported(self):
+        from agent import explainer
+
+        assert "21 records" in explainer.render(self._long())
+
+
+class TestArrayAndAliasCoverage:
+    def test_role_aliases_to_rank(self):
+        from agent.tools import resolve_filters
+
+        assert resolve_filters("crew", {"role": "Captain"}, {"rank"}) == {"rank": "Captain"}
+
+
+class TestLookupDeduplication:
+    """A seeded call and the model's own near-identical one return the same
+    rows. Concatenating them doubles the count, and the doubled figure matches
+    no tool output — so the verifier rejects an otherwise correct answer."""
+
+    def _trace(self):
+        from agent.schemas import TraceEntry
+
+        rows = [{"crew_id": "C-3305"}, {"crew_id": "C-3310"}]
+        return [TraceEntry(tool="lookup", result=rows),
+                TraceEntry(tool="lookup", result=list(rows))]
+
+    def test_duplicate_rows_collapse(self):
+        answer = build_answer(route("Who is on reserve at BLR?"), self._trace())
+        assert answer.count == 2
+
+    def test_deduplicated_count_verifies(self):
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, Intent, Tier
+        from agent.verifier import verify
+
+        trace = self._trace()
+        r = AdvisorResponse(tier=Tier.LOOKUP, intent=Intent.LOOKUP_RESERVE,
+                            answer=build_answer(route("Who is on reserve at BLR?"), trace),
+                            trace=trace)
+        assert verify(explainer.render(r), r.trace).ok
+
+    def test_distinct_rows_are_kept(self):
+        from agent.schemas import TraceEntry
+
+        trace = [TraceEntry(tool="lookup", result=[{"crew_id": "C-1"}]),
+                 TraceEntry(tool="lookup", result=[{"crew_id": "C-2"}])]
+        assert build_answer(route("Who is on reserve at BLR?"), trace).count == 2
+
+
+class TestValueFormatting:
+    """Postgres objects must render as a controller would read them.
+
+    repr of a list of dates is `[datetime.date(2026, 9, 14), ...]` — unreadable,
+    and the verifier lifts 2026/14/15 out of it as unsourced numeric claims.
+    """
+
+    def test_dates_render_iso(self):
+        import datetime as dt
+        from agent.explainer import fmt_value
+
+        assert fmt_value(dt.date(2026, 9, 15)) == "2026-09-15"
+        assert fmt_value(dt.time(6, 0)) == "06:00:00"
+
+    def test_date_lists_render_without_repr(self):
+        import datetime as dt
+        from agent.explainer import fmt_value
+
+        out = fmt_value([dt.date(2026, 9, 14), dt.date(2026, 9, 15)])
+        assert out == "2026-09-14, 2026-09-15"
+        assert "datetime.date" not in out
+
+    def test_decimal_renders_plainly(self):
+        from decimal import Decimal
+        from agent.explainer import fmt_value
+
+        assert fmt_value(Decimal("2.75")) == "2.75"
+
+    def test_row_with_a_date_array_verifies(self):
+        import datetime as dt
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier, TraceEntry
+        from agent.verifier import verify
+
+        rows = [{"crew_id": "C-3305",
+                 "dates": [dt.date(2026, 9, 14), dt.date(2026, 9, 15)]}]
+        r = AdvisorResponse(tier=Tier.LOOKUP, intent=Intent.LOOKUP_RESERVE,
+                            answer=LookupAnswer(rows=rows),
+                            trace=[TraceEntry(tool="lookup", result=rows)])
+        assert verify(explainer.render(r), r.trace).ok
+
+
+class TestRecommendationLeads:
+    """A ranked table makes the controller do the deciding, which is the work
+    the advisor was meant to save. Recommendation first, evidence last."""
+
+    def _answer(self):
+        from agent.schemas import FunnelStage, Option, ReplacementAnswer
+
+        cheap = Option(action="Assign Captain C-3310 (reserve callout)",
+                       crew_id="C-3310", legal=True, cost_inr=18500, rank=1,
+                       rules_checked=["R"] * 7)
+        return ReplacementAnswer(
+            recommended=cheap, cancellation_multiple=81,
+            options=[cheap,
+                     Option(action="Assign Captain C-1526 (day-off)", crew_id="C-1526",
+                            legal=True, cost_inr=24000, rank=2),
+                     Option(action="Cancel all 6 flights", crew_id=None,
+                            legal=True, cost_inr=1500000, rank=3)],
+            funnel=[FunnelStage("considered", 27),
+                    FunnelStage("qualified", 16, 11, "no rating"),
+                    FunnelStage("legal", 5)],
+        )
+
+    def test_opens_with_the_recommendation(self):
+        from agent import explainer
+
+        first = explainer.render_replacement(self._answer()).splitlines()[0]
+        assert "C-3310" in first and "18,500" in first
+
+    def test_cancel_is_a_contrast_not_a_ranked_row(self):
+        from agent import explainer
+
+        out = explainer.render_replacement(self._answer())
+        assert "Against cancelling" in out
+        assert "81×" in out
+        assert "#3 Cancel" not in out, "cancel listed as a peer option"
+
+    def test_funnel_comes_last_as_evidence(self):
+        from agent import explainer
+
+        out = explainer.render_replacement(self._answer())
+        assert out.index("C-3310") < out.index("Considered 27")
+
+    def test_ties_are_declared(self):
+        from agent import explainer
+
+        a = self._answer()
+        a.equal_cost_alternatives = 3
+        assert "not a uniquely correct choice" in explainer.render_replacement(a)
