@@ -241,3 +241,106 @@ class TestLookupIsNeverPolished:
 
 def llm_unused(llm) -> bool:
     return not llm.calls
+
+
+class TestUnavailableCapability:
+    """A missing tool must never read as a finding about the operation."""
+
+    def _resp(self, body):
+        from agent.schemas import AdvisorResponse, Intent, Tier, TraceEntry
+        return AdvisorResponse(
+            tier=Tier.REPLACEMENT, intent=Intent.IMPACT_OF_EVENT, answer=body,
+            trace=[TraceEntry(tool="ripple", error="INTERNAL: ripple: needs the rules engine in core/")],
+        )
+
+    def test_empty_replacement_names_the_gap(self):
+        from agent import explainer
+        from agent.schemas import ReplacementAnswer
+
+        out = explainer.render(self._resp(ReplacementAnswer()))
+        assert "Cannot answer this yet" in out
+        assert "ripple" in out
+        assert "No legal option found" not in out, "asserts a fact never checked"
+
+    def test_empty_consequence_is_never_blank(self):
+        from agent import explainer
+        from agent.schemas import ConsequenceAnswer
+
+        assert explainer.render(self._resp(ConsequenceAnswer())).strip()
+
+    def test_no_legal_option_only_after_a_real_search(self):
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, FunnelStage, Intent, ReplacementAnswer, Tier
+
+        searched = AdvisorResponse(
+            tier=Tier.REPLACEMENT, intent=Intent.FIND_REPLACEMENT,
+            answer=ReplacementAnswer(funnel=[FunnelStage(stage="legal", count=0, dropped=12,
+                                                         reason="rule breach")]),
+        )
+        assert "No legal option found" in explainer.render(searched)
+
+
+class TestConfidenceOrdering:
+    def test_verifier_rejection_never_raises_confidence(self):
+        """A failed tool means LOW. A rejected draft is also bad news, so it
+        must not promote the answer to MEDIUM on its way past."""
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        liar = PlaceholderLLM([LLMResponse(text="Use C-9999 for 47,000.")] * 4)
+        r = Advisor(llm=liar).ask("If C-2087 covers P-2291, does any rule breach?")
+        assert r.confidence is Confidence.LOW
+
+
+class TestFilterGuardRails:
+    """Measured on qwen3:8b: 12 of 16 tier-1 questions failed on an invented
+    column name. The guesses were semantically right under another name, so
+    the fix is to advertise the real names and alias the near-misses."""
+
+    def test_schema_advertises_real_field_names(self):
+        from agent.tools import schemas_for_port
+
+        lookup = [t for t in schemas_for_port(PlaceholderToolPort())
+                  if t["name"] == "lookup"][0]
+        desc = lookup["input_schema"]["properties"]["filters"]["description"]
+        assert "dep_station" in desc and "valid_to" in desc
+
+    def test_schema_falls_back_when_port_cannot_describe_itself(self):
+        from agent.tools import TOOL_SCHEMAS, schemas_for_port
+
+        assert schemas_for_port(object()) is TOOL_SCHEMAS
+
+    @pytest.mark.parametrize(
+        "guess,real",
+        [("departure", "dep_station"), ("origin", "dep_station"),
+         ("destination", "arr_station"), ("crew", "crew_id"),
+         ("expiry_date", "valid_to"), ("flight", "flight_no"),
+         ("pairing", "pairing_id")],
+    )
+    def test_near_miss_aliased_to_the_real_field(self, guess, real):
+        from agent.tools import resolve_filters
+
+        assert resolve_filters("flights", {guess: "X"}, {real}) == {real: "X"}
+
+    def test_alias_is_case_and_space_tolerant(self):
+        from agent.tools import resolve_filters
+
+        assert resolve_filters("flights", {"Departure Station": "DEL"},
+                               {"dep_station"}) == {"dep_station": "DEL"}
+
+    def test_unknown_field_rejected_naming_the_valid_ones(self):
+        from agent.tools import ToolError, resolve_filters
+
+        with pytest.raises(ToolError) as exc:
+            resolve_filters("flights", {"wingspan": 30}, {"dep_station", "date"})
+        assert "dep_station" in str(exc.value) and "date" in str(exc.value)
+
+    def test_alias_only_applies_when_the_target_exists(self):
+        """`crew` must not become `crew_id` on a table without that column."""
+        from agent.tools import ToolError, resolve_filters
+
+        with pytest.raises(ToolError):
+            resolve_filters("costs", {"crew": "C-1042"}, {"currency"})
+
+    def test_aliases_work_end_to_end_through_the_port(self):
+        rows = PlaceholderToolPort().lookup("flights", {"departure": "DEL"})
+        assert rows and all(r["dep_station"] == "DEL" for r in rows)

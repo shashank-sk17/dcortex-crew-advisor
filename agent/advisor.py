@@ -30,7 +30,7 @@ from agent.schemas import (
     Tier,
     TraceEntry,
 )
-from agent.tools import TOOL_SCHEMAS, PlaceholderToolPort, ToolPort, dispatch
+from agent.tools import TOOL_SCHEMAS, PlaceholderToolPort, ToolPort, dispatch, schemas_for_port
 
 
 @dataclass(slots=True)
@@ -77,15 +77,16 @@ _INTENT_TOOLS: dict[Intent, tuple[str, ...]] = {
 }
 
 
-def tools_for(intent: Intent) -> list[dict[str, Any]]:
+def tools_for(intent: Intent, port: Any = None) -> list[dict[str, Any]]:
     """Narrow the toolset to what this intent can plausibly need.
 
     A tier-1 lookup does not get `joint_plan` in its schema list. Fewer, more
     relevant tools measurably improves selection and cuts prompt size.
     """
+    schemas = schemas_for_port(port) if port is not None else TOOL_SCHEMAS
     allowed = set(_INTENT_TOOLS.get(intent, ()))
-    narrowed = [t for t in TOOL_SCHEMAS if t["name"] in allowed]
-    return narrowed or TOOL_SCHEMAS
+    narrowed = [t for t in schemas if t["name"] in allowed]
+    return narrowed or schemas
 
 
 def seed_calls(route: Route) -> list[ToolCall]:
@@ -241,7 +242,7 @@ class Advisor:
         if seeds := seed_calls(turn.route):
             self._run_tools(seeds, turn)
 
-        tools = tools_for(turn.route.intent)
+        tools = tools_for(turn.route.intent, self.port)
         messages: list[dict[str, Any]] = [{"role": "user", "content": turn.query}]
 
         while turn.iterations < self.cfg.max_iterations:
@@ -318,7 +319,11 @@ class Advisor:
                 # renderer, which can only restate tool output, and say so
                 # rather than shipping an unsourced claim.
                 narrative = explainer.render(response)
-                response.confidence = Confidence.MEDIUM
+                # Only ever lower confidence here. A rejected draft is bad
+                # news; it must not promote an answer that was already LOW
+                # because its tools failed.
+                if response.confidence is Confidence.HIGH:
+                    response.confidence = Confidence.MEDIUM
                 response.unknowns.append(result.summary())
 
         response.narrative = narrative

@@ -128,7 +128,10 @@ def render_replacement(answer: ReplacementAnswer) -> str:
     if answer.options:
         lines.append("\nLegal options:")
         lines += [f"  {render_option(o)}" for o in answer.options]
-    elif not answer.near_misses:
+    elif not answer.near_misses and answer.funnel:
+        # Only claim this when a search actually ran. Saying "no legal option"
+        # because the search tool is missing asserts something about the world
+        # that we never checked.
         lines.append("\nNo legal option found.")
 
     if answer.near_misses:
@@ -171,17 +174,37 @@ def render_consequence(answer: ConsequenceAnswer) -> str:
     return "\n".join(lines)
 
 
+def render_unavailable(response: AdvisorResponse) -> str:
+    """What to say when the tools that would answer this did not run.
+
+    A blank answer, or worse a confident "no legal option found", both misread
+    a missing capability as a fact about the world. Name the gap instead.
+    """
+    failed = [e for e in response.trace if e.error]
+    if not failed:
+        return "No data was returned for this question."
+
+    lines = ["Cannot answer this yet — the tools it needs are unavailable:"]
+    for entry in failed:
+        detail = entry.error.split(":", 1)[-1].strip()
+        lines.append(f"  {entry.tool}: {detail}")
+    lines.append("\nThis is a missing capability, not a finding about the operation.")
+    return "\n".join(lines)
+
+
 def render(response: AdvisorResponse) -> str:
     """Deterministic prose for any answer body. No model involved."""
     match response.answer:
         case LookupAnswer() as a:
-            return render_lookup(a)
+            body = render_lookup(a) if a.rows else ""
         case ReplacementAnswer() as a:
-            return render_replacement(a)
+            body = render_replacement(a)
         case ConsequenceAnswer() as a:
-            return render_consequence(a)
+            body = render_consequence(a)
         case _:
-            return "No answer produced."
+            body = ""
+
+    return body.strip() or render_unavailable(response)
 
 
 # --------------------------------------------------------------------------

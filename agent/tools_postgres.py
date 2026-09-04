@@ -23,7 +23,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from agent.tools import ToolError
+from agent.tools import ToolError, resolve_filters
 
 try:
     import psycopg
@@ -64,6 +64,17 @@ def load_database_url() -> str | None:
 
 class PostgresToolPort:
     """Read-only adapter over the operational schema."""
+
+    ENTITIES = tuple(TABLES)
+
+    def entity_fields(self, entity: str) -> frozenset[str]:
+        """Real column names, so the tool schema can advertise them."""
+        if entity not in TABLES:
+            raise ToolError("UNRESOLVED_ENTITY", f"unknown entity {entity!r}")
+        return frozenset(
+            c for c in self._columns(TABLES[entity][0])
+            if c not in {"embedding", "search_tsv"}
+        )
 
     def __init__(self, url: str | None = None) -> None:
         if psycopg is None:
@@ -116,12 +127,7 @@ class PostgresToolPort:
         known = self._columns(table)
 
         where, params = [], []
-        for key, value in (filters or {}).items():
-            if key not in known:
-                raise ToolError(
-                    "UNRESOLVED_ENTITY",
-                    f"{table} has no column {key!r}; known: {', '.join(sorted(known))}",
-                )
+        for key, value in resolve_filters(entity, filters, known).items():
             if isinstance(value, (list, tuple)):
                 where.append(f'"{key}" = any(%s)')
                 params.append(list(value))
