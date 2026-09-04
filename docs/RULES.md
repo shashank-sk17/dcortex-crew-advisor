@@ -56,7 +56,6 @@ fdp_limit_hours = 13.0 - 0.5 * max(0, n_sectors - 2)
 | 6 | 11.0h |
 
 Scenario S4 turns on exactly this: a tech delay stretches a 4-sector duty past 12.0h, so the rostered crew cannot legally finish the tail legs — and the delay *creates* a fresh crewing problem.
-
 ---
 
 ## The 7 rules
@@ -68,7 +67,7 @@ Scenario S4 turns on exactly this: a tech delay stretches a 4-sector duty past 1
 | `RULE-FLT-03` | Max 100 block hours in any 28 consecutive calendar days | `max_flight_hours: 100`<br>`window_days: 28` | Same window logic as DUTY-02, on `flight_hours`. |
 | `RULE-REST-04` | Min 12h rest between release and next report | `min_rest_hours: 12` | Check **both** sides — rest before the new duty *and* rest before whatever the candidate is already rostered for next. |
 | `RULE-QUAL-05` | Crew must hold a valid rating for the assigned aircraft type | — | `crew.ratings` vs `flights.aircraft_type`. Ratings are `A320` / `ATR72`. C-2091 is ATR-only — the exclusion case. |
-| `RULE-CERT-06` | All certifications must be valid on the duty date | — | 4 cert types per crew in `certifications.json`. Check `valid_from ≤ duty_date ≤ valid_to` for **every** cert, on **every** day of the pairing. |
+| `RULE-CERT-06` | All certifications must be valid on the duty date | — | 4 cert types per crew in `certifications.json`. Check **`valid_to ≥ duty_date` only** — not `valid_from ≤ duty_date` too — for **every** cert, on **every** day of the pairing. See Trap 3 below. |
 | `RULE-BASE-07` | Reserve callout from own base only; covering from another base requires deadhead positioning (cost applies) | — | See below. |
 
 ---
