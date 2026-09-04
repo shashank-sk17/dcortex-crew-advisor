@@ -14,6 +14,7 @@ the verifier proves the prose only repeats what the tools said.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from dataclasses import fields as dataclass_fields
 from typing import Any, Iterator
 
 from agent import config, explainer, verifier
@@ -22,10 +23,13 @@ from agent.prompts import system_prompt
 from agent.router import Route, route
 from agent.schemas import (
     AdvisorResponse,
+    BlastRadius,
     Confidence,
     ConsequenceAnswer,
+    FunnelStage,
     Intent,
     LookupAnswer,
+    Option,
     ReplacementAnswer,
     Tier,
     TraceEntry,
@@ -131,6 +135,14 @@ def seed_calls(route: Route) -> list[ToolCall]:
                 pairing_id=ents.primary_pairing,
                 role=ents.roles[0] if ents.roles else "Captain")
 
+        case Intent.IMPACT_OF_EVENT if ents.primary_crew or ents.primary_pairing:
+            add("ripple", event={
+                "type": "SICK_CREW",
+                "crew_id": ents.primary_crew,
+                "pairing_id": ents.primary_pairing,
+                "reported_utc": ents.primary_date,
+            })
+
         case Intent.JOINT_PLAN if len(ents.pairing_ids) >= 2:
             add("joint_plan", events=[
                 {"type": "SICK_CREW", "pairing_id": pid} for pid in ents.pairing_ids
@@ -142,6 +154,26 @@ def seed_calls(route: Route) -> list[ToolCall]:
 # --------------------------------------------------------------------------
 # Assembling the answer object
 # --------------------------------------------------------------------------
+
+
+def _coerce(cls: Any, rows: Any) -> list[Any]:
+    """Turn raw tool output into the typed objects the renderer expects.
+
+    Tools return plain JSON — from fixtures, from Postgres, and eventually
+    over HTTP from `core/`. Passing dicts straight through works right up
+    until something reads `stage.count` and gets an AttributeError, so the
+    conversion belongs here, at the one boundary where the answer object is
+    assembled. Unknown keys are dropped rather than raising: a backend that
+    adds a field must not break the UI.
+    """
+    fields = {f.name for f in dataclass_fields(cls)}
+    out = []
+    for row in rows or []:
+        if isinstance(row, cls):
+            out.append(row)
+        elif isinstance(row, dict):
+            out.append(cls(**{k: v for k, v in row.items() if k in fields}))
+    return out
 
 
 def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
@@ -178,16 +210,17 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
             uncovered_flights=rippled.get("uncovered_flights", []),
             at_risk_flights=rippled.get("at_risk_flights", []),
             passengers_affected=rippled.get("passengers", 0),
-            funnel=found.get("funnel", []),
-            options=found.get("options", []),
-            near_misses=found.get("near_misses", []),
+            funnel=_coerce(FunnelStage, found.get("funnel")),
+            options=_coerce(Option, found.get("options")),
+            near_misses=_coerce(Option, found.get("near_misses")),
             excluded=found.get("excluded", []),
         )
 
     found = results.get("find_options") or {}
+    blast = (results.get("ripple") or {}).get("blast_radius")
     return ConsequenceAnswer(
-        options=found.get("options", []),
-        blast_radius=results.get("ripple", {}).get("blast_radius"),
+        options=_coerce(Option, found.get("options")),
+        blast_radius=(_coerce(BlastRadius, [blast]) or [None])[0],
         world_diff=results.get("simulate"),
         joint_plan=results.get("joint_plan"),
     )

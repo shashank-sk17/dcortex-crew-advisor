@@ -58,6 +58,10 @@ def make_llm() -> tuple[Any, str]:
 
 
 def make_port() -> tuple[Any, str]:
+    if DATA_KIND == "fixtures":
+        from agent.tools_fixtures import FixtureToolPort
+
+        return FixtureToolPort(), "answer-key fixtures"
     if DATA_KIND == "postgres":
         from agent.tools_postgres import PostgresToolPort
 
@@ -86,12 +90,14 @@ def _stage_status(ran: bool, degraded: bool = False) -> str:
     return "degraded" if degraded else "ok"
 
 
-def run_pipeline(query: str) -> dict[str, Any]:
+def run_pipeline(query: str) -> dict[str, Any]:  # noqa: C901
     """Run the agent and report what every stage did.
 
     The stages are re-derived rather than instrumented inside `agent/` — the
     advisor's own contract stays clean and this file stays disposable.
     """
+    import time
+    started = time.perf_counter()
     llm, _, port, _ = backends()
     entities = extract(query)
     decision = route(query)
@@ -193,6 +199,7 @@ def run_pipeline(query: str) -> dict[str, Any]:
                 "detail": {"narrative": response.narrative},
             },
         ],
+        "elapsed_ms": int((time.perf_counter() - started) * 1000),
         "entities": entities.to_dict(),
         "response": response.to_dict(),
         "narrative": response.narrative,
@@ -252,6 +259,21 @@ def _probe_args(name: str) -> dict[str, Any]:
     }[name]
 
 
+def scenario_index() -> list[dict[str, Any]]:
+    """S1-S6 for the scenario feed, straight from the generated fixtures."""
+    path = config.REPO_ROOT / "evals" / "fixtures" / "index.json"
+    return json.loads(path.read_text()) if path.exists() else []
+
+
+def scenario_detail(scenario_id: str) -> dict[str, Any]:
+    path = config.REPO_ROOT / "evals" / "fixtures" / f"{scenario_id.upper()}.json"
+    if not path.exists():
+        return {"error": {"code": "UNRESOLVED_ENTITY",
+                          "message": f"no scenario {scenario_id!r}",
+                          "hint": "GET /api/v1/scenarios"}}
+    return json.loads(path.read_text())
+
+
 def gold_questions() -> list[dict[str, Any]]:
     """The 38 gold prompts, with the tier our router assigns each one."""
     return [
@@ -279,9 +301,28 @@ class Handler(SimpleHTTPRequestHandler):
         if "/api/" in (args[0] if args else ""):
             sys.stderr.write(f"  {args[0]}\n")
 
+    def _cors(self) -> None:
+        """Angular dev-serves on :4200 and this listens on :8420, so without
+        these the browser blocks every call before it leaves the page."""
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self._cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    @staticmethod
+    def _canonical(path: str) -> str:
+        """Accept the contract's /api/v1 paths as well as the short ones."""
+        return path.replace("/api/v1/", "/api/", 1) if path.startswith("/api/v1/") else path
+
     def _send_json(self, payload: Any, status: int = 200) -> None:
         body = json.dumps(payload, default=str).encode()
         self.send_response(status)
+        self._cors()
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -289,10 +330,28 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
-        path = urlparse(self.path).path
+        path = self._canonical(urlparse(self.path).path)
 
         if path == "/api/state":
             return self._send_json(build_state())
+        if path == "/api/health":
+            state = build_state()
+            return self._send_json({
+                "ok": True, "model": state["llm"]["model"],
+                "data": state["data"]["source"],
+                "tools_live": sum(t["live"] for t in state["tools"]),
+                "tools_total": len(state["tools"]),
+            })
+        if path == "/api/rules":
+            from agent.tools import dispatch
+            _, _, port, _ = backends()
+            rules = [dispatch(port, "explain_rule", {"rule_id": r}).result
+                     for r in config.ALL_RULE_IDS]
+            return self._send_json([r for r in rules if r])
+        if path == "/api/scenarios":
+            return self._send_json(scenario_index())
+        if path.startswith("/api/scenarios/"):
+            return self._send_json(scenario_detail(path.rsplit("/", 1)[-1]))
         if path == "/api/questions":
             return self._send_json(gold_questions())
         if path == "/api/stream":
@@ -301,8 +360,11 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
-        if urlparse(self.path).path != "/api/ask":
-            return self._send_json({"error": "not found"}, 404)
+        if self._canonical(urlparse(self.path).path) != "/api/ask":
+            return self._send_json(
+                {"error": {"code": "UNRESOLVED_ENTITY",
+                           "message": f"no route {self.path!r}",
+                           "hint": "POST /api/v1/ask"}}, 404)
 
         length = int(self.headers.get("Content-Length", 0))
         try:
@@ -311,17 +373,20 @@ class Handler(SimpleHTTPRequestHandler):
             return self._send_json({"error": "malformed JSON"}, 400)
 
         if not query:
-            return self._send_json({"error": "empty query"}, 400)
+            return self._send_json(
+                {"error": {"code": "AMBIGUOUS_QUERY", "message": "empty query",
+                           "hint": "send {\"query\": \"...\"}"}}, 400)
 
         try:
             return self._send_json(run_pipeline(query))
         except Exception:
             traceback.print_exc()
             return self._send_json(
-                {"error": "pipeline raised", "traceback": traceback.format_exc()}, 500
+                {"error": {"code": "INTERNAL", "message": "pipeline raised",
+                           "hint": traceback.format_exc()[-400:]}}, 500
             )
 
-    def _stream(self, query: str) -> None:
+    def _stream(self, query: str) -> None:  # noqa: D401
         """SSE, in the shape `docs/API_CONTRACT.md` specifies.
 
         Here so Kiran can see the real event sequence before `api/` exists.
@@ -330,6 +395,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._send_json({"error": "missing q"}, 400)
 
         self.send_response(200)
+        self._cors()
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

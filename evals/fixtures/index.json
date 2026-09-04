@@ -1,0 +1,44 @@
+[
+ {
+  "scenario_id": "S1",
+  "title": "ATR captain sick call",
+  "difficulty": "easy",
+  "tier": 2,
+  "event_type": "SICK_CREW"
+ },
+ {
+  "scenario_id": "S2",
+  "title": "Flagship: Captain C-1042 sick \u2014 2-day pairing",
+  "difficulty": "medium",
+  "tier": 2,
+  "event_type": "SICK_CREW"
+ },
+ {
+  "scenario_id": "S3",
+  "title": "BLR station closure 08:00\u201314:00Z, 17 Sep",
+  "difficulty": "medium",
+  "tier": 3,
+  "event_type": "STATION_CLOSURE"
+ },
+ {
+  "scenario_id": "S4",
+  "title": "Tech delay cascades into an FDP breach",
+  "difficulty": "medium-hard",
+  "tier": 3,
+  "event_type": "DELAY"
+ },
+ {
+  "scenario_id": "S5",
+  "title": "Certification lapse discovered pre-flight",
+  "difficulty": "medium",
+  "tier": 2,
+  "event_type": "CERT_EXPIRY"
+ },
+ {
+  "scenario_id": "S6",
+  "title": "Two simultaneous captain sick calls",
+  "difficulty": "hard",
+  "tier": 3,
+  "event_type": "MULTI_SICK"
+ }
+]

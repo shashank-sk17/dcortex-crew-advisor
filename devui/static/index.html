@@ -84,6 +84,7 @@ button,input,textarea{font:inherit;color:inherit}
 .status b{color:var(--ink);font-weight:500}
 .dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:7px;vertical-align:1px}
 .dot.on{background:var(--teal)} .dot.off{background:var(--violet)}
+.timing{margin-left:auto;color:var(--amber);font:500 11.5px var(--mono)}
 
 /* ─── pipeline strip: the instrument ────────────────────── */
 .strip{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--line)}
@@ -214,7 +215,7 @@ button,input,textarea{font:inherit;color:inherit}
   </aside>
 
   <main class="main">
-    <div class="status" id="status"></div>
+    <div class="status" id="status"><span id="timing" class="timing" hidden></span></div>
 
     <div class="strip" id="strip"></div>
     <div class="detail" id="detail" hidden></div>
@@ -280,6 +281,7 @@ async function loadState() {
   const s = await (await fetch('/api/state')).json();
   const live = s.tools.filter(t => t.live).length;
   const bar = $('#status');
+  const keep = $('#timing');
   bar.innerHTML = '';
 
   const item = (on, label, value) => {
@@ -295,6 +297,7 @@ async function loadState() {
     item(live === s.tools.length, 'tools', `${live}/${s.tools.length} live`),
     item(s.dataset.present, 'gold', `${s.dataset.exemplars} questions`)
   );
+  if (keep) bar.append(keep);
 }
 
 /* ── gold questions ──────────────────────────────────────── */
@@ -456,6 +459,12 @@ async function run(button) {
     }
 
     current = data;
+    if (data.elapsed_ms != null) {
+      const secs = (data.elapsed_ms / 1000).toFixed(1);
+      const calls = (data.stages.find(x => x.key === 'tools')?.detail.calls || []).length;
+      $('#timing').textContent = `${secs}s · ${calls} tool call${calls === 1 ? '' : 's'}`;
+      $('#timing').hidden = false;
+    }
     renderStrip(data.stages);
     $('#intro').hidden = true;
     $('#answer-sec').hidden = false;
