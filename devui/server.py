@@ -13,6 +13,7 @@ while `api/` is unstarted, and this needs no framework.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import sys
@@ -426,7 +427,16 @@ def main() -> int:
     print("  ctrl-c to stop\n")
 
     try:
-        Server(("127.0.0.1", PORT), Handler).serve_forever()
+        server = Server(("127.0.0.1", PORT), Handler)
+    except OSError as exc:
+        if exc.errno != errno.EADDRINUSE:
+            raise
+        print(f"  port {PORT} is already in use — another console is running.\n")
+        print(f"  stop it with:  lsof -ti:{PORT} | xargs kill\n")
+        return 1
+
+    try:
+        server.serve_forever()
     except KeyboardInterrupt:
         print("\n  stopped\n")
     return 0
