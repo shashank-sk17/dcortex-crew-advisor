@@ -30,7 +30,16 @@ from agent.schemas import TraceEntry
 # Numbers as a controller would write them: 18,500 / ₹18500 / 61.33 / 1h20m
 NUMBER_RE = re.compile(r"(?<![\w.])(?:₹\s*)?(\d[\d,]*(?:\.\d+)?)(?![\w])")
 
-ID_PATTERNS = (CREW_RE, PAIRING_RE, FLIGHT_ID_RE, FLIGHT_NO_RE, RULE_RE, AIRCRAFT_RE)
+# Non-capturing so `findall` yields whole matches. A date is one claim, not
+# three numbers — checking 2026-09-15 as "2026" + "09" + "15" both floods the
+# ledger and lets a wrong date pass on the strength of its year.
+DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+CLOCK_RE = re.compile(r"\b\d{1,2}:\d{2}Z?\b")
+
+ID_PATTERNS = (
+    CREW_RE, PAIRING_RE, FLIGHT_ID_RE, FLIGHT_NO_RE, RULE_RE, AIRCRAFT_RE,
+    DATE_RE, CLOCK_RE,
+)
 
 
 @dataclass(slots=True)
@@ -49,12 +58,17 @@ class VerificationResult:
     claims: list[Claim] = field(default_factory=list)
     unsupported: list[Claim] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    had_trace: bool = True
 
     def summary(self) -> str:
-        if self.ok:
-            return f"verified: {len(self.claims)} claims all traced to tool output"
-        bad = ", ".join(c.value for c in self.unsupported)
-        return f"UNVERIFIED: {len(self.unsupported)} untraced claim(s): {bad}"
+        if self.unsupported:
+            bad = ", ".join(c.value for c in self.unsupported)
+            return f"UNVERIFIED: {len(self.unsupported)} untraced claim(s): {bad}"
+        if not self.had_trace:
+            return "no tool ran — nothing in this answer has a source"
+        if not self.claims:
+            return "nothing asserted — no checkable claim was made"
+        return f"verified: {len(self.claims)} claims all traced to tool output"
 
 
 # --------------------------------------------------------------------------
@@ -63,12 +77,19 @@ class VerificationResult:
 
 
 def _walk(node: Any) -> Iterable[Any]:
-    """Yield every scalar in an arbitrarily nested tool result."""
+    """Yield every scalar in an arbitrarily nested tool result.
+
+    Collection lengths are yielded too. "12 records" is a count the explainer
+    derived from what a tool returned, not a number the model invented, so the
+    cardinality of every result is legitimate evidence.
+    """
     if isinstance(node, dict):
+        yield len(node)
         for key, value in node.items():
             yield key
             yield from _walk(value)
     elif isinstance(node, (list, tuple, set)):
+        yield len(node)
         for item in node:
             yield from _walk(item)
     else:
@@ -227,6 +248,7 @@ def verify(narrative: str, trace: Iterable[TraceEntry]) -> VerificationResult:
         claims=claims,
         unsupported=unsupported,
         notes=notes,
+        had_trace=bool(trace),
     )
 
 
