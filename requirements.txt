@@ -4,6 +4,15 @@ numpy>=1.26          # cosine index in agent/exemplars.py
 # Dev
 pytest>=8.0
 
+flask>=3.0
+flask-cors>=4.0
+
+# Database
+psycopg[binary]>=3.2
+
+# Environment configuration
+python-dotenv>=1.0
+
 # Deliberately absent for now:
 #   anthropic        — agent/llm.py is a placeholder; no network calls yet
 #   flask            — api/ not started (issue #32)
