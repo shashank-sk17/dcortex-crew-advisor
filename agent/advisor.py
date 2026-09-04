@@ -423,7 +423,16 @@ class Advisor:
                 # because its tools failed.
                 if response.confidence is Confidence.HIGH:
                     response.confidence = Confidence.MEDIUM
-                response.unknowns.append(result.summary())
+                # Say what happened, not just that something failed. The answer
+                # on screen is the verified one; it is the model's discarded
+                # draft that was unsupported, and a bare "UNVERIFIED" makes the
+                # good answer look like the suspect one.
+                bad = ", ".join(c.value for c in result.unsupported)
+                response.unknowns.append(
+                    f"The model's draft claimed {bad}, which no tool output "
+                    f"supports. That draft was discarded — what is shown above "
+                    f"is rendered directly from the tool results."
+                )
 
         response.narrative = narrative
         response.citations = explainer.collect_citations(response)
