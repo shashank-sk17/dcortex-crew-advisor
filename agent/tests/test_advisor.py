@@ -344,3 +344,123 @@ class TestFilterGuardRails:
     def test_aliases_work_end_to_end_through_the_port(self):
         rows = PlaceholderToolPort().lookup("flights", {"departure": "DEL"})
         assert rows and all(r["dep_station"] == "DEL" for r in rows)
+
+
+class TestRendererNeverComputes:
+    """The 'LLM never calculates' rule binds the renderer too.
+
+    A 21-row lookup printed "… and 11 more". 11 appears in no tool output, so
+    the verifier rejected the whole answer — correctly.
+    """
+
+    def _long(self):
+        from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier, TraceEntry
+
+        rows = [{"crew_id": f"C-{1000+i}"} for i in range(21)]
+        return AdvisorResponse(
+            tier=Tier.LOOKUP, intent=Intent.LOOKUP_CREW, answer=LookupAnswer(rows=rows),
+            trace=[TraceEntry(tool="lookup", result=rows)],
+        )
+
+    def test_truncation_states_no_derived_number(self):
+        from agent import explainer
+
+        out = explainer.render(self._long())
+        assert "11 more" not in out
+        assert "(list truncated)" in out
+
+    def test_truncated_listing_verifies(self):
+        from agent import explainer
+        from agent.verifier import verify
+
+        r = self._long()
+        assert verify(explainer.render(r), r.trace).ok
+
+    def test_total_is_still_reported(self):
+        from agent import explainer
+
+        assert "21 records" in explainer.render(self._long())
+
+
+class TestArrayAndAliasCoverage:
+    def test_role_aliases_to_rank(self):
+        from agent.tools import resolve_filters
+
+        assert resolve_filters("crew", {"role": "Captain"}, {"rank"}) == {"rank": "Captain"}
+
+
+class TestLookupDeduplication:
+    """A seeded call and the model's own near-identical one return the same
+    rows. Concatenating them doubles the count, and the doubled figure matches
+    no tool output — so the verifier rejects an otherwise correct answer."""
+
+    def _trace(self):
+        from agent.schemas import TraceEntry
+
+        rows = [{"crew_id": "C-3305"}, {"crew_id": "C-3310"}]
+        return [TraceEntry(tool="lookup", result=rows),
+                TraceEntry(tool="lookup", result=list(rows))]
+
+    def test_duplicate_rows_collapse(self):
+        answer = build_answer(route("Who is on reserve at BLR?"), self._trace())
+        assert answer.count == 2
+
+    def test_deduplicated_count_verifies(self):
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, Intent, Tier
+        from agent.verifier import verify
+
+        trace = self._trace()
+        r = AdvisorResponse(tier=Tier.LOOKUP, intent=Intent.LOOKUP_RESERVE,
+                            answer=build_answer(route("Who is on reserve at BLR?"), trace),
+                            trace=trace)
+        assert verify(explainer.render(r), r.trace).ok
+
+    def test_distinct_rows_are_kept(self):
+        from agent.schemas import TraceEntry
+
+        trace = [TraceEntry(tool="lookup", result=[{"crew_id": "C-1"}]),
+                 TraceEntry(tool="lookup", result=[{"crew_id": "C-2"}])]
+        assert build_answer(route("Who is on reserve at BLR?"), trace).count == 2
+
+
+class TestValueFormatting:
+    """Postgres objects must render as a controller would read them.
+
+    repr of a list of dates is `[datetime.date(2026, 9, 14), ...]` — unreadable,
+    and the verifier lifts 2026/14/15 out of it as unsourced numeric claims.
+    """
+
+    def test_dates_render_iso(self):
+        import datetime as dt
+        from agent.explainer import fmt_value
+
+        assert fmt_value(dt.date(2026, 9, 15)) == "2026-09-15"
+        assert fmt_value(dt.time(6, 0)) == "06:00:00"
+
+    def test_date_lists_render_without_repr(self):
+        import datetime as dt
+        from agent.explainer import fmt_value
+
+        out = fmt_value([dt.date(2026, 9, 14), dt.date(2026, 9, 15)])
+        assert out == "2026-09-14, 2026-09-15"
+        assert "datetime.date" not in out
+
+    def test_decimal_renders_plainly(self):
+        from decimal import Decimal
+        from agent.explainer import fmt_value
+
+        assert fmt_value(Decimal("2.75")) == "2.75"
+
+    def test_row_with_a_date_array_verifies(self):
+        import datetime as dt
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier, TraceEntry
+        from agent.verifier import verify
+
+        rows = [{"crew_id": "C-3305",
+                 "dates": [dt.date(2026, 9, 14), dt.date(2026, 9, 15)]}]
+        r = AdvisorResponse(tier=Tier.LOOKUP, intent=Intent.LOOKUP_RESERVE,
+                            answer=LookupAnswer(rows=rows),
+                            trace=[TraceEntry(tool="lookup", result=rows)])
+        assert verify(explainer.render(r), r.trace).ok

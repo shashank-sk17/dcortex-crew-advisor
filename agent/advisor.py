@@ -153,13 +153,22 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
 
     if route.tier is Tier.LOOKUP:
         rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
         for entry in trace:
             if entry.result is None:
                 continue
-            if isinstance(entry.result, list):
-                rows.extend(r for r in entry.result if isinstance(r, dict))
-            elif isinstance(entry.result, dict):
-                rows.append(entry.result)
+            found = entry.result if isinstance(entry.result, list) else [entry.result]
+            for row in found:
+                if not isinstance(row, dict):
+                    continue
+                # Deduplicate across calls. A seeded lookup and the model's own
+                # near-identical one both return the same rows; concatenating
+                # them doubles the count, and that doubled figure matches no
+                # tool output, so the verifier rightly rejects the answer.
+                key = repr(sorted(row.items(), key=str))
+                if key not in seen:
+                    seen.add(key)
+                    rows.append(row)
         return LookupAnswer(rows=rows)
 
     if route.tier is Tier.REPLACEMENT:

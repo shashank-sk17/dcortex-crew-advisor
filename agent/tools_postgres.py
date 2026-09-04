@@ -102,7 +102,29 @@ class PostgresToolPort:
         except ToolError:
             raise
         except Exception as exc:
-            raise ToolError("INTERNAL", f"query failed: {type(exc).__name__}: {exc}") from exc
+            name = type(exc).__name__
+            if "InvalidTextRepresentation" in name or "DatatypeMismatch" in name:
+                # A filter value of the wrong type. Say so plainly so the model
+                # can retry rather than reading it as a database fault.
+                raise ToolError(
+                    "UNRESOLVED_ENTITY",
+                    f"a filter value has the wrong type for its column: {exc}",
+                ) from exc
+            raise ToolError("INTERNAL", f"query failed: {name}: {exc}") from exc
+
+    @lru_cache(maxsize=32)
+    def _array_columns(self, table: str) -> frozenset[str]:
+        """Columns holding arrays, e.g. reserve_pool.dates (date[]).
+
+        A scalar equality filter against one raises malformed-array-literal, so
+        these need containment instead.
+        """
+        rows = self._query(
+            "select column_name from information_schema.columns "
+            "where table_schema='public' and table_name=%s and data_type='ARRAY'",
+            (table,),
+        )
+        return frozenset(r["column_name"] for r in rows)
 
     @lru_cache(maxsize=32)
     def _columns(self, table: str) -> frozenset[str]:
@@ -126,9 +148,14 @@ class PostgresToolPort:
         table, order = TABLES[entity]
         known = self._columns(table)
 
+        arrays = self._array_columns(table)
         where, params = [], []
         for key, value in resolve_filters(entity, filters, known).items():
-            if isinstance(value, (list, tuple)):
+            if key in arrays:
+                # "is 2026-09-15 in this reserve's dates?" is containment.
+                where.append(f'"{key}" @> %s')
+                params.append(list(value) if isinstance(value, (list, tuple)) else [value])
+            elif isinstance(value, (list, tuple)):
                 where.append(f'"{key}" = any(%s)')
                 params.append(list(value))
             else:

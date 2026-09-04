@@ -207,6 +207,7 @@ FIELD_ALIASES: dict[str, str] = {
     "certification": "cert_type", "type": "cert_type",
     # misc
     "station": "base", "home_base": "base", "rank_name": "rank",
+    "role": "rank", "position": "rank", "job": "rank",
     "aircraft_rating": "ratings", "rating": "ratings",
 }
 

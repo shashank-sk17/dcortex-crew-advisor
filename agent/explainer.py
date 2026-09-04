@@ -13,6 +13,10 @@ introduce a fact, and the verifier runs after it to enforce that.
 
 from __future__ import annotations
 
+import datetime as dt
+from decimal import Decimal
+from typing import Any
+
 from agent import config
 from agent.llm import LLM
 from agent.schemas import (
@@ -25,6 +29,29 @@ from agent.schemas import (
     RuleVerdict,
     Verdict,
 )
+
+
+ROW_LIMIT = 10
+"""Rows shown before a lookup listing is truncated."""
+
+
+def fmt_value(value: Any) -> str:
+    """Render a backend value as a controller would read it.
+
+    Postgres hands back `datetime.date`, `time` and `Decimal` objects, and
+    Python's repr of a list of dates is `[datetime.date(2026, 9, 14), ...]`.
+    That is unreadable, and the verifier then lifts `2026`, `14`, `15` out of
+    it as unsourced numeric claims. ISO strings fix both.
+    """
+    if isinstance(value, (dt.datetime, dt.date, dt.time)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return f"{value.normalize():f}"
+    if isinstance(value, (list, tuple)):
+        return ", ".join(fmt_value(v) for v in value)
+    if isinstance(value, dict):
+        return " ".join(f"{k}={fmt_value(v)}" for k, v in value.items())
+    return str(value)
 
 
 def _inr(amount: int) -> str:
@@ -95,10 +122,14 @@ def render_lookup(answer: LookupAnswer) -> str:
         return "No records match that query."
     noun = "record" if answer.count == 1 else "records"
     lines = [f"{answer.count} {noun}."]
-    for row in answer.rows[:10]:
-        lines.append("  " + ", ".join(f"{k}={v}" for k, v in row.items()))
-    if answer.count > 10:
-        lines.append(f"  … and {answer.count - 10} more.")
+    for row in answer.rows[:ROW_LIMIT]:
+        lines.append("  " + " · ".join(f"{k}={fmt_value(v)}" for k, v in row.items()))
+    if answer.count > ROW_LIMIT:
+        # No number here on purpose. "and N more" is arithmetic the renderer
+        # did itself, and even a literal page size is a figure no tool
+        # produced — the verifier rejects both, correctly. The total above is
+        # sourced: it is the length of the tool's own result.
+        lines.append("  (list truncated)")
     return "\n".join(lines)
 
 
