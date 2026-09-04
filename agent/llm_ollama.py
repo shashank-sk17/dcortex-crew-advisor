@@ -30,16 +30,20 @@ from agent.llm import LLMResponse, StreamEvent, ToolCall
 
 DEFAULT_HOST = "http://localhost:11434"
 
-# Measured on this repo's tool schemas, temperature 0, three tier-1 questions:
+# Measured on this repo's tool schemas at temperature 0, four tier-1 questions,
+# reasoning mode off:
 #
-#   llama3.1:8b   3/3 usable tool calls
-#   llama3.2      2/3 — misses the reserve lookup entirely, emits "null" dates
-#   llama3        0/3 — no tool support at all in the original Llama 3
+#   qwen3:8b      4/4 usable tool calls   <- default
+#   llama3.1:8b   4/4
+#   llama3.2      2/4 — 3B; misses lookups, emits "null" dates
+#   llama3        0/4 — no tool support at all in the original Llama 3
 #
-# `llama3.2` is newer than `llama3.1` but far smaller: the Ollama tag is the 3B
-# text model, against 8B for llama3.1:8b. Newer version, fewer parameters.
-DEFAULT_MODEL = "llama3.2"
-BEST_TESTED_MODEL = "llama3.1:8b"
+# With reasoning ON, qwen3:8b drops to 3/4: it answers rule questions out of
+# the system prompt instead of calling `explain_rule`. See `think` below.
+#
+# Note llama3.2 is *newer* than llama3.1 but far smaller — the Ollama tag is
+# the 3B text model. A higher version number is not more capability here.
+DEFAULT_MODEL = "qwen3:8b"
 
 
 class OllamaError(RuntimeError):
@@ -158,13 +162,24 @@ class OllamaLLM:
         self,
         model: str = DEFAULT_MODEL,
         host: str = DEFAULT_HOST,
-        timeout: int = 180,
+        timeout: int = 300,
         temperature: float = 0.0,
+        think: bool = False,
     ) -> None:
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout
         self.temperature = temperature
+        self.think = think
+        """Reasoning mode, for models that have one (Qwen3, DeepSeek-R1).
+
+        Off by default because it *suppresses tool calls*. Asked "what does
+        RULE-DUTY-02 say?", qwen3:8b with thinking on skipped `explain_rule`
+        and answered out of the rulebook in the system prompt, wrapped in
+        stray `<rule>` tags. With `think=False` it calls the tool correctly.
+        Answering from prompt context rather than from a tool is exactly what
+        the trust boundary exists to prevent, so this stays off.
+        """
         self.calls: list[dict[str, Any]] = []
 
     # -- transport --------------------------------------------------------
@@ -212,6 +227,9 @@ class OllamaLLM:
         }
         if tools:
             body["tools"] = _to_ollama_tools(tools)
+        if not self.think:
+            # Ignored by models without a reasoning mode.
+            body["think"] = False
         return body
 
     @staticmethod

@@ -177,3 +177,33 @@ class TestSummaryWording:
     def test_sourced_but_silent_answer(self):
         r = verify("Nothing to report.", trace({"crew_id": "C-1042"}))
         assert r.ok and "nothing asserted" in r.summary()
+
+
+class TestPostgresScalarTypes:
+    """Postgres returns types Python's numeric tower does not cover.
+
+    Every one of these produced a false UNVERIFIED before it was handled.
+    """
+
+    def test_decimal_counts_as_a_number(self):
+        from decimal import Decimal
+
+        t = trace({"block_hours": Decimal("2.75"), "cost_inr": Decimal("18500")})
+        assert verify("Block time 2.75 hours at 18,500.", t).ok
+
+    def test_wrong_value_still_rejected_against_a_decimal(self):
+        from decimal import Decimal
+
+        assert not verify("Block time 9.99 hours.", trace({"block_hours": Decimal("2.75")})).ok
+
+    def test_datetime_matches_its_rendered_form(self):
+        import datetime as dt
+
+        t = trace({"last_rest_ended": dt.datetime(2026, 9, 13, 2, 0, tzinfo=dt.timezone.utc)})
+        assert verify("Rest ended 2026-09-13 at 02:00.", t).ok
+
+    def test_date_and_time_objects_indexed(self):
+        import datetime as dt
+
+        t = trace({"date": dt.date(2026, 9, 15), "start": dt.time(6, 0)})
+        assert verify("On 2026-09-15 from 06:00.", t).ok

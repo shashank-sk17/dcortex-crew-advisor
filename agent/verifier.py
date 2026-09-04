@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Iterable
 
 from agent import config
@@ -162,7 +163,10 @@ def build_evidence(trace: Iterable[TraceEntry]) -> Evidence:
             for scalar in _walk(payload):
                 if isinstance(scalar, bool) or scalar is None:
                     continue
-                if isinstance(scalar, (int, float)):
+                # Decimal is not an int or a float. Postgres returns every
+                # numeric column as one, so without this every cost, duty hour
+                # and block time read as unsourced.
+                if isinstance(scalar, (int, float, Decimal)):
                     evidence.numbers.append((float(scalar), entry.tool))
                     continue
                 if not isinstance(scalar, str):

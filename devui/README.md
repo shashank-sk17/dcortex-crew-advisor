@@ -103,7 +103,7 @@ python -m devui.server                                   # placeholder + vendore
 AGENT_LLM=ollama  python -m devui.server                 # local Llama + JSON
 AGENT_DATA=postgres python -m devui.server               # placeholder + Neon
 AGENT_LLM=ollama AGENT_DATA=postgres python -m devui.server   # both
-OLLAMA_MODEL=llama3.1:8b AGENT_LLM=ollama python -m devui.server
+OLLAMA_MODEL=qwen3:8b AGENT_LLM=ollama python -m devui.server
 ```
 
 The status bar reports which of each is live, so you never have to guess what
@@ -111,21 +111,32 @@ produced an answer.
 
 ### Local model choice
 
-Measured on this repo's tool schemas at temperature 0, three tier-1 questions:
+Measured on this repo's tool schemas at temperature 0, four tier-1 questions,
+reasoning mode off:
 
 | Model | Params | Usable tool calls |
 |---|---|---|
-| `llama3.1:8b` | 8B | **3/3** |
-| `llama3.2` (default) | 3B | 2/3 — misses the reserve lookup |
-| `llama3` | 8B | 0/3 — no tool support in the original Llama 3 |
+| **`qwen3:8b`** (default) | 8B | **4/4** |
+| `llama3.1:8b` | 8B | 4/4 |
+| `llama3.2` | 3B | 2/4 — misses lookups, emits `"null"` dates |
+| `llama3` | 8B | 0/4 — no tool support in the original Llama 3 |
 
-`llama3.2` is *newer* than `llama3.1` but far *smaller*: the Ollama tag is the
-3B text model. Llama 3.2 text only ships at 1B and 3B, so the version number
-going up does not mean more capability here.
+**Reasoning mode is off by default, and that matters.** With thinking *on*,
+qwen3:8b drops to 3/4 — asked what RULE-DUTY-02 says, it skips `explain_rule`
+entirely and answers out of the rulebook in the system prompt, wrapped in stray
+`<rule>` tags. Answering from prompt context rather than from a tool is exactly
+what the trust boundary exists to prevent, so `OllamaLLM(think=False)` is the
+default. Pass `think=True` only if you want to inspect the reasoning.
 
-Set `OLLAMA_MODEL=llama3.1:8b` for the better local results. Either way the
-deterministic router carries tool selection — it routes 38/38 with no model at
-all — so a weak local model degrades narration, not correctness.
+Note `llama3.2` is *newer* than `llama3.1` but far *smaller* — the Ollama tag
+is the 3B text model. A higher version number is not more capability here.
+
+Tool **selection** is now reliable on both 8B models; tool **arguments** are
+not. Both invented filter keys (`departure`, `airports` — the column is
+`dep_station`) and hallucinated dates outside the dataset entirely. The
+deterministic router and `seed_calls()` carry the common path, and the port
+rejects unknown columns loudly rather than guessing, so a bad argument fails
+visibly instead of returning a plausible wrong answer.
 
 ### Postgres
 

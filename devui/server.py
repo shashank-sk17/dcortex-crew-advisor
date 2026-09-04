@@ -42,7 +42,7 @@ PORT = 8420
 #   AGENT_DATA  json (default)        | postgres
 LLM_KIND = os.environ.get("AGENT_LLM", "placeholder").lower()
 DATA_KIND = os.environ.get("AGENT_DATA", "json").lower()
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:8b")
 
 
 def make_llm() -> tuple[Any, str]:
