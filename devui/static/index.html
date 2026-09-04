@@ -290,9 +290,10 @@ async function loadState() {
     return d;
   };
   bar.append(
-    item(s.llm.live, 'model', s.llm.live ? s.llm.model : 'placeholder'),
+    item(s.llm.live, 'model', s.llm.model),
+    item(s.data && s.data.live, 'data', s.data ? s.data.source : 'json'),
     item(live === s.tools.length, 'tools', `${live}/${s.tools.length} live`),
-    item(s.dataset.present, 'dataset', `${s.dataset.exemplars} gold questions`)
+    item(s.dataset.present, 'gold', `${s.dataset.exemplars} questions`)
   );
 }
 

@@ -192,3 +192,52 @@ class TestToolSchemas:
         port = PlaceholderToolPort()
         for name in TOOL_NAMES:
             assert callable(getattr(port, name, None)), name
+
+
+class TestToolLoopDeduplication:
+    """Small local models re-request identical calls until the cap.
+
+    Observed with llama3.1:8b: nine identical duty_clock calls for one
+    question. Results are deterministic, so a repeat buys nothing.
+    """
+
+    def test_identical_calls_run_once(self):
+        from agent.llm import LLMResponse, PlaceholderLLM, ToolCall
+
+        same = ToolCall(id="x", name="explain_rule", args={"rule_id": "RULE-DUTY-02"})
+        llm = PlaceholderLLM([
+            LLMResponse(tool_calls=[same], stop_reason="tool_use"),
+            LLMResponse(tool_calls=[same], stop_reason="tool_use"),
+            LLMResponse(text="done"),
+        ])
+        r = Advisor(llm=llm).ask("What does RULE-DUTY-02 say?")
+        assert [e.tool for e in r.trace] == ["explain_rule"]
+
+    def test_loop_stops_when_every_call_is_a_repeat(self):
+        from agent.llm import LLMResponse, PlaceholderLLM, ToolCall
+
+        same = ToolCall(id="x", name="explain_rule", args={"rule_id": "RULE-FDP-01"})
+        llm = PlaceholderLLM([LLMResponse(tool_calls=[same], stop_reason="tool_use")] * 20)
+        Advisor(llm=llm).ask("What does RULE-FDP-01 say?")
+        assert len(llm.calls) < 5, "should break out, not burn the iteration cap"
+
+
+class TestLookupIsNeverPolished:
+    def test_lookup_uses_the_template_verbatim(self):
+        """llama3.1:8b answered "what does RULE-DUTY-02 say?" with an invented
+        situation — a crew that had exceeded its limits. Nothing existed to
+        exceed anything. The verifier passed it because the fabrication was
+        narrative, not numeric."""
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+        from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier
+
+        liar = PlaceholderLLM([LLMResponse(text="The crew has exceeded its duty limits.")])
+        resp = AdvisorResponse(tier=Tier.LOOKUP, intent=Intent.EXPLAIN_RULE,
+                               answer=LookupAnswer(rows=[{"rule_id": "RULE-DUTY-02"}]))
+        assert explainer.polish(resp, liar) == explainer.render(resp)
+        assert llm_unused(liar)
+
+
+def llm_unused(llm) -> bool:
+    return not llm.calls

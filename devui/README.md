@@ -91,3 +91,48 @@ curl -N "localhost:8420/api/stream?q=What+does+RULE-REST-04+say%3F"
 - **Nothing is persisted.** Every request re-runs the pipeline from scratch.
 - **No API key, no network.** `PlaceholderLLM` drives the loop; the explainer
   stage will read *degraded* until a real client is wired up (issue #24).
+
+---
+
+## Backends
+
+Both seams are protocols, so the console drives any combination via env vars.
+
+```bash
+python -m devui.server                                   # placeholder + vendored JSON
+AGENT_LLM=ollama  python -m devui.server                 # local Llama + JSON
+AGENT_DATA=postgres python -m devui.server               # placeholder + Neon
+AGENT_LLM=ollama AGENT_DATA=postgres python -m devui.server   # both
+OLLAMA_MODEL=llama3.1:8b AGENT_LLM=ollama python -m devui.server
+```
+
+The status bar reports which of each is live, so you never have to guess what
+produced an answer.
+
+### Local model choice
+
+Measured on this repo's tool schemas at temperature 0, three tier-1 questions:
+
+| Model | Params | Usable tool calls |
+|---|---|---|
+| `llama3.1:8b` | 8B | **3/3** |
+| `llama3.2` (default) | 3B | 2/3 — misses the reserve lookup |
+| `llama3` | 8B | 0/3 — no tool support in the original Llama 3 |
+
+`llama3.2` is *newer* than `llama3.1` but far *smaller*: the Ollama tag is the
+3B text model. Llama 3.2 text only ships at 1B and 3B, so the version number
+going up does not mean more capability here.
+
+Set `OLLAMA_MODEL=llama3.1:8b` for the better local results. Either way the
+deterministic router carries tool selection — it routes 38/38 with no model at
+all — so a weak local model degrades narration, not correctness.
+
+### Postgres
+
+`PostgresToolPort` opens every connection **read-only**, so nothing here can
+write to the shared database. `lookup`, `duty_clock` and `explain_rule` are
+live; the legality tools raise until `core/` lands. Filter keys are whitelisted
+against `information_schema`, so nothing from the model reaches SQL as an
+identifier.
+
+Set `DATABASE_URL` in the environment or a gitignored `.env`.

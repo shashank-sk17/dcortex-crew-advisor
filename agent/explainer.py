@@ -242,9 +242,17 @@ def polish(response: AdvisorResponse, llm: LLM | None = None) -> str:
 
     Falls back to the template verbatim when no model is configured, which is
     the current default — the placeholder client returns no usable prose.
+
+    **Tier 1 is never polished.** A lookup answer is already complete and
+    correct; there is no trade-off to explain, so the model can only add risk.
+    Asked "what does RULE-DUTY-02 say?", llama3.1:8b produced "Recommendation:
+    reduce the crew's duty hours — the crew has exceeded the maximum allowed"
+    — an entire fabricated situation, with no crew and nothing exceeded. The
+    verifier passed it, because the invention was narrative rather than
+    numeric and cited nothing checkable. See agent/README.md §6.
     """
     template = render(response)
-    if llm is None:
+    if llm is None or isinstance(response.answer, LookupAnswer):
         return template
 
     result = llm.complete(

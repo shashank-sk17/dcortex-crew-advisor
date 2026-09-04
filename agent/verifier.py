@@ -12,6 +12,7 @@ itself hallucinate.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
@@ -92,6 +93,12 @@ def _walk(node: Any) -> Iterable[Any]:
         yield len(node)
         for item in node:
             yield from _walk(item)
+    elif isinstance(node, (dt.date, dt.time, dt.datetime)):
+        # Postgres returns these as objects, but the explainer prints them as
+        # text. Index the rendered form or the narrative's own dates and times
+        # look unsourced.
+        yield str(node)
+        yield node.isoformat()
     else:
         yield node
 

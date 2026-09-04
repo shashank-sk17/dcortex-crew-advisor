@@ -14,8 +14,10 @@ while `api/` is unstarted, and this needs no framework.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import traceback
+from functools import lru_cache
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -26,7 +28,7 @@ from agent import config
 from agent.advisor import Advisor, seed_calls, tools_for
 from agent.entities import extract, mask
 from agent.exemplars import load_exemplars
-from agent.llm import AnthropicLLM
+from agent.llm import PlaceholderLLM
 from agent.router import route
 from agent.schemas import Intent
 from agent.tools import TOOL_NAMES, TOOL_SCHEMAS, PlaceholderToolPort
@@ -34,6 +36,43 @@ from agent.verifier import build_evidence, verify
 
 STATIC = Path(__file__).resolve().parent / "static"
 PORT = 8420
+
+# Backends, chosen by env var so the same console drives every combination:
+#   AGENT_LLM   placeholder (default) | ollama
+#   AGENT_DATA  json (default)        | postgres
+LLM_KIND = os.environ.get("AGENT_LLM", "placeholder").lower()
+DATA_KIND = os.environ.get("AGENT_DATA", "json").lower()
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+
+
+def make_llm() -> tuple[Any, str]:
+    """Return the configured client and a label for the status bar."""
+    if LLM_KIND == "ollama":
+        from agent.llm_ollama import OllamaLLM
+
+        client = OllamaLLM(OLLAMA_MODEL)
+        if not client.available():
+            return PlaceholderLLM(), f"ollama unreachable — using placeholder"
+        return client, f"ollama {OLLAMA_MODEL}"
+    return PlaceholderLLM(), "placeholder"
+
+
+def make_port() -> tuple[Any, str]:
+    if DATA_KIND == "postgres":
+        from agent.tools_postgres import PostgresToolPort
+
+        try:
+            return PostgresToolPort(), "postgres (read-only)"
+        except Exception as exc:
+            return PlaceholderToolPort(), f"postgres failed ({exc}) — using json"
+    return PlaceholderToolPort(), "vendored json"
+
+
+@lru_cache(maxsize=1)
+def backends() -> tuple[Any, str, Any, str]:
+    llm, llm_label = make_llm()
+    port, port_label = make_port()
+    return llm, llm_label, port, port_label
 
 
 # --------------------------------------------------------------------------
@@ -53,11 +92,12 @@ def run_pipeline(query: str) -> dict[str, Any]:
     The stages are re-derived rather than instrumented inside `agent/` — the
     advisor's own contract stays clean and this file stays disposable.
     """
+    llm, _, port, _ = backends()
     entities = extract(query)
     decision = route(query)
     planned = seed_calls(decision)
 
-    advisor = Advisor()
+    advisor = Advisor(port=port, llm=llm)
     response = advisor.ask(query)
 
     verification = verify(response.narrative, response.trace)
@@ -145,8 +185,11 @@ def run_pipeline(query: str) -> dict[str, Any]:
             {
                 "key": "explainer",
                 "name": "Explainer",
-                "status": _stage_status(bool(response.narrative), True),
-                "summary": "template renderer (no model configured)",
+                "status": _stage_status(bool(response.narrative), LLM_KIND != "ollama"),
+                "summary": (
+                    "model-polished" if LLM_KIND == "ollama"
+                    else "template renderer (no model configured)"
+                ),
                 "detail": {"narrative": response.narrative},
             },
         ],
@@ -172,7 +215,7 @@ def _truncate(value: Any, limit: int = 4000) -> Any:
 
 def build_state() -> dict[str, Any]:
     """What is real and what is a stub. The main thing you are here to check."""
-    port = PlaceholderToolPort()
+    _, llm_label, port, port_label = backends()
     tools = []
     for name in sorted(TOOL_NAMES):
         try:
@@ -182,14 +225,10 @@ def build_state() -> dict[str, Any]:
             live = False
         tools.append({"name": name, "live": live})
 
-    try:
-        AnthropicLLM()
-        llm_live = True
-    except NotImplementedError:
-        llm_live = False
-
     return {
-        "llm": {"live": llm_live, "model": config.ADVISOR_MODEL},
+        "llm": {"live": LLM_KIND == "ollama" and "unreachable" not in llm_label,
+                "model": llm_label},
+        "data": {"live": "postgres" in port_label, "source": port_label},
         "tools": tools,
         "dataset": {
             "present": config.DATA_DIR.exists(),
@@ -314,8 +353,9 @@ def main() -> int:
     live = sum(t["live"] for t in state["tools"])
 
     print(f"\n  dCortex agent console   http://localhost:{PORT}")
-    print(f"  tools {live}/{len(state['tools'])} live · "
-          f"model {'connected' if state['llm']['live'] else 'placeholder'} · "
+    print(f"  model  {state['llm']['model']}")
+    print(f"  data   {state['data']['source']}")
+    print(f"  tools  {live}/{len(state['tools'])} live · "
           f"{state['dataset']['exemplars']} gold questions")
     print("  ctrl-c to stop\n")
 

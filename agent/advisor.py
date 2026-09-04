@@ -51,6 +51,8 @@ class Turn:
     iterations: int = 0
     verification: verifier.VerificationResult | None = None
     notes: list[str] = field(default_factory=list)
+    seen_calls: set[str] = field(default_factory=set)
+    repeats: int = 0
 
 
 # --------------------------------------------------------------------------
@@ -209,8 +211,24 @@ class Advisor:
 
     # -- the loop ---------------------------------------------------------
 
+    @staticmethod
+    def _signature(call: ToolCall) -> str:
+        return f"{call.name}:{sorted((call.args or {}).items())!r}"
+
     def _run_tools(self, calls: list[ToolCall], turn: Turn) -> None:
+        """Execute calls, skipping any already made this turn.
+
+        Small local models loop: llama3.1:8b will re-request an identical call
+        every iteration until the cap. The results are deterministic, so a
+        repeat adds nothing but latency and a duplicated trace row.
+        """
         for call in calls:
+            signature = self._signature(call)
+            if signature in turn.seen_calls:
+                turn.repeats += 1
+                continue
+            turn.seen_calls.add(signature)
+
             entry = dispatch(self.port, call.name, call.args)
             turn.trace.append(entry)
             if entry.error:
@@ -236,7 +254,12 @@ class Advisor:
             )
             if not response.wants_tools:
                 break
+            before = len(turn.trace)
             self._run_tools(response.tool_calls, turn)
+            if len(turn.trace) == before:
+                # Every requested call was a repeat: the model is looping and
+                # has no new evidence to gather. Stop rather than burn the cap.
+                break
             messages.append({
                 "role": "assistant",
                 "content": [
