@@ -151,8 +151,9 @@ environment variable.
 | `core/` rules engine | **Real.** All seven rules, verified against dCortex's answer keys. |
 | `agent/` router, verifier, explainer | **Real.** |
 | Postgres reads | **Real.** Read-only connections; a write raises at the server. |
-| Local model | **Real** via Ollama, unreliable at arguments — see §8. |
-| Hosted model client | **Placeholder.** `AnthropicLLM` raises `NotImplementedError` (issue #24). |
+| Hosted model | **Real** via Groq (`qwen/qwen3.6-27b`), 5/5 on tool calls. |
+| Local model | **Real** via Ollama, slower and weaker at arguments — see §8. |
+| Anthropic client | **Placeholder.** `AnthropicLLM` raises `NotImplementedError` (issue #24). |
 | `api/` production API | **Not started** (issue #32). `devui/` is a dev tool. |
 
 ### Proof, not assertion
@@ -166,7 +167,7 @@ The engine is scored against dCortex's published keys:
 | S6 two simultaneous sick calls | 13/13 both aircraft · ₹42,500 joint total · 20 equal-cost ties |
 | Q18 legality detail | reproduces the key's wording verbatim |
 
-`pytest -q` → 236 passing.
+`pytest -q` → 241 passing.
 
 ---
 

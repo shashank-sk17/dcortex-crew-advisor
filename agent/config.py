@@ -14,11 +14,23 @@ from pathlib import Path
 # PLACEHOLDER: no network calls are made anywhere in this package yet. These
 # ids are recorded so the swap in `agent/llm.py` is a one-line change per role.
 # --------------------------------------------------------------------------
-ROUTER_MODEL = "claude-haiku-4-5-20251001"  # cheap classification
-ADVISOR_MODEL = "claude-sonnet-5"           # the tool loop
-EXPLAINER_MODEL = "claude-sonnet-5"         # answer object -> prose
+# Model ids are complete as written — never append a date suffix.
+ROUTER_MODEL = "claude-haiku-4-5"   # cheap classification, when rules abstain
+ADVISOR_MODEL = "claude-opus-5"     # the tool loop
+EXPLAINER_MODEL = "claude-opus-5"   # answer object -> prose
 
 MAX_TOOL_ITERATIONS = 8  # hard stop on the tool loop; a tier-3 ask needs ~5
+
+# Local and hosted backends, selected by env var in devui. Measured tool-call
+# accuracy on this repo's schemas at temperature 0:
+#
+#   qwen/qwen3.6-27b  (Groq)    5/5   sub-second when not rate limited
+#   qwen3:8b          (Ollama)  4/4   10-30s on a laptop
+#   llama3.1:8b       (Ollama)  4/4
+#   llama3.2          (Ollama)  2/4   3B model
+#   llama3            (Ollama)  0/4   no tool support at all
+OLLAMA_MODEL = "qwen3:8b"
+GROQ_MODEL = "qwen/qwen3.6-27b"
 
 # --------------------------------------------------------------------------
 # Dataset

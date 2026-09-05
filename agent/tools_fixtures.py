@@ -71,13 +71,25 @@ class FixtureToolPort(PlaceholderToolPort):
 
     # -- fixture-backed tools ---------------------------------------------
 
+    def assignment_for_crew(self, crew_id: str) -> tuple[str, str]:
+        for pairing in self._rows("pairings"):
+            for member in pairing.get("crew", []):
+                if member.get("crew_id") == crew_id:
+                    return pairing["pairing_id"], member.get("role", "Captain")
+        raise ToolError("UNRESOLVED_ENTITY",
+                        f"{crew_id} is not rostered on any pairing this week")
+
     def find_options(
         self,
-        role: str,
+        role: str | None = None,
         pairing_id: str | None = None,
         flight_id: str | None = None,
+        crew_id: str | None = None,
         callout_utc: str | None = None,
     ) -> dict[str, Any]:
+        if not pairing_id and crew_id:
+            pairing_id, rostered = self.assignment_for_crew(crew_id)
+            role = role or rostered
         if not pairing_id and flight_id:
             pairing_id = self.pairing_for_flight(flight_id)
         if not pairing_id:

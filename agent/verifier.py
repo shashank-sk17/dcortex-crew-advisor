@@ -52,6 +52,16 @@ class Claim:
     value: str
     supported: bool = False
     source_tool: str | None = None
+    derivation: str | None = None
+    """Set when the value was not returned by any tool but follows from two
+    that were, e.g. "24000 - 18500". The claim is still auditable: a reader
+    can check the arithmetic against numbers the tools did produce."""
+
+    @property
+    def status(self) -> str:
+        if not self.supported:
+            return "unsupported"
+        return "derived" if self.derivation else "sourced"
 
 
 @dataclass(slots=True)
@@ -62,6 +72,10 @@ class VerificationResult:
     notes: list[str] = field(default_factory=list)
     had_trace: bool = True
 
+    @property
+    def derived(self) -> list[Claim]:
+        return [c for c in self.claims if c.derivation]
+
     def summary(self) -> str:
         if self.unsupported:
             bad = ", ".join(c.value for c in self.unsupported)
@@ -70,6 +84,9 @@ class VerificationResult:
             return "no tool ran — nothing in this answer has a source"
         if not self.claims:
             return "nothing asserted — no checkable claim was made"
+        if derived := self.derived:
+            return (f"verified: {len(self.claims)} claims — {len(derived)} derived "
+                    f"by arithmetic from tool output, the rest returned directly")
         return f"verified: {len(self.claims)} claims all traced to tool output"
 
 
@@ -145,6 +162,50 @@ class Evidence:
         for known, tool in self.numbers:
             if abs(known - value) <= config.VERIFIER_FLOAT_TOLERANCE:
                 return tool
+        return None
+
+    def derive(self, value: float) -> tuple[str, str] | None:
+        """Whether `value` follows from two evidence numbers by simple arithmetic.
+
+        A price difference, a total, a multiple, a percentage — these are
+        things a controller genuinely wants said, and a model will compute
+        them whether or not a tool did. "₹5,500 more than the recommended
+        option" is 24,000 − 18,500: correct, useful, and not a fabrication.
+
+        Rejecting it is a false positive, and false positives cost as much as
+        false negatives — they discard correct answers and teach people to
+        ignore the gate. So a derived value is accepted *and labelled with its
+        derivation*, which keeps it auditable: a reader can check the
+        arithmetic against numbers the tools did return.
+
+        Deliberately narrow: pairs only, no chaining, and both operands must
+        themselves be evidence. That keeps the reachable set small enough that
+        a fabricated number is very unlikely to land on one by accident.
+        """
+        if abs(value) < config.VERIFIER_NUMERIC_FLOOR:
+            return None
+
+        tol = config.VERIFIER_FLOAT_TOLERANCE
+        seen: list[tuple[float, str]] = []
+        for number, tool in self.numbers:
+            if not any(abs(number - n) <= tol for n, _ in seen):
+                seen.append((number, tool))
+
+        for a, tool_a in seen:
+            for b, tool_b in seen:
+                if a is b:
+                    continue
+                for expr, result in (
+                    (f"{a:g} - {b:g}", a - b),
+                    (f"{a:g} + {b:g}", a + b),
+                    (f"{a:g} x {b:g}", a * b),
+                    (f"{a:g} / {b:g}", a / b if b else None),
+                    (f"100 x {a:g} / {b:g}", 100 * a / b if b else None),
+                ):
+                    if result is None:
+                        continue
+                    if abs(result - value) <= tol:
+                        return expr, f"{tool_a}+{tool_b}"
         return None
 
 
@@ -240,13 +301,20 @@ def verify(narrative: str, trace: Iterable[TraceEntry]) -> VerificationResult:
 
     for claim in claims:
         if claim.kind == "identifier":
-            source = evidence.has_identifier(claim.value)
-        else:
-            value = _norm_number(claim.value)
-            source = evidence.has_number(value) if value is not None else None
+            claim.source_tool = evidence.has_identifier(claim.value)
+            claim.supported = claim.source_tool is not None
+            continue
 
-        claim.supported = source is not None
-        claim.source_tool = source
+        value = _norm_number(claim.value)
+        if value is None:
+            continue
+
+        if source := evidence.has_number(value):
+            claim.supported, claim.source_tool = True, source
+        elif derived := evidence.derive(value):
+            # Not returned by a tool, but it follows from two that were.
+            claim.supported = True
+            claim.derivation, claim.source_tool = derived
 
     unsupported = [c for c in claims if not c.supported]
 

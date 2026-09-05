@@ -69,3 +69,45 @@ class TestMessageFlattening:
 
     def test_plain_string_untouched(self):
         assert OllamaLLM._flatten({"role": "user", "content": "hi"})["content"] == "hi"
+
+
+class TestGroqReasoningLeak:
+    """qwen3.6 returned its entire chain of thought as the message content, and
+    that reasoning became the answer a controller would read.
+
+    Worse, it verified clean — the model was reciting figures from the prompt
+    it had been handed, so every number was technically sourced. The gate
+    cannot catch this; not shipping reasoning is the fix.
+    """
+
+    def test_think_block_removed(self):
+        from agent.llm_groq import strip_reasoning
+
+        got = strip_reasoning("<think>step one\nstep two</think>Use C-3310.")
+        assert got == "Use C-3310."
+
+    def test_unterminated_think_block_removed(self):
+        """Truncation mid-thought must not leak the whole draft."""
+        from agent.llm_groq import strip_reasoning
+
+        assert strip_reasoning("<think>reasoning that never closes") == ""
+
+    def test_plain_text_untouched(self):
+        from agent.llm_groq import strip_reasoning
+
+        assert strip_reasoning("Use C-3310 — ₹18,500.") == "Use C-3310 — ₹18,500."
+
+    def test_reasoning_hidden_at_the_source(self):
+        from agent.llm_groq import GroqLLM
+
+        body = GroqLLM(api_key="x")._body("sys", [{"role": "user", "content": "hi"}],
+                                          None, stream=False)
+        assert body["reasoning_format"] == "hidden"
+
+    def test_arguments_arrive_as_a_json_string(self):
+        """Groq sends OpenAI-shaped arguments: a string, not an object."""
+        from agent.llm_ollama import _coerce_args
+
+        schema = {"type": "object", "properties": {"entity": {"type": "string"}},
+                  "required": ["entity"]}
+        assert _coerce_args('{"entity":"reserves"}', schema) == {"entity": "reserves"}

@@ -179,6 +179,17 @@ button,input,textarea{font:inherit;color:inherit}
 .note.bad{background:rgba(226,97,90,.09);border-left-color:var(--red)}
 
 .empty{color:var(--mute);font:400 12px/1.6 var(--mono)}
+.reset{
+  float:right;cursor:pointer;padding:1px 8px;
+  background:none;border:1px solid var(--line-hi);border-radius:2px;
+  color:var(--dim);font:400 11px var(--mono);
+}
+.reset:hover{border-color:var(--amber);color:var(--amber)}
+.turn{padding:8px 0;border-bottom:1px solid var(--line)}
+.turn:last-child{border-bottom:0}
+.turn q{display:block;color:var(--amber);font:500 12px var(--mono);quotes:none}
+.turn p{margin:3px 0 0;color:var(--dim);font:400 12px/1.5 var(--sans);
+  white-space:pre-wrap;max-height:4.6em;overflow:hidden}
 .lede{margin:0 0 14px;max-width:62ch;color:var(--dim);font:400 13px/1.65 var(--sans)}
 .lede em{color:var(--violet);font-style:normal}
 .lede code{font:400 12px var(--mono);color:var(--ink)}
@@ -234,6 +245,10 @@ button,input,textarea{font:inherit;color:inherit}
           <p class="lede">Tier&nbsp;2 and&nbsp;3 questions will show <em>degraded</em> until the
           legality engine lands. That is deliberate: an unbuilt tool errors rather than
           returning a plausible number.</p>
+        </section>
+        <section class="sec" id="transcript-sec" hidden>
+          <h2>Conversation <button class="reset" id="reset">new</button></h2>
+          <div id="transcript"></div>
         </section>
         <section class="sec" id="answer-sec" hidden>
           <h2>Answer</h2>
@@ -428,6 +443,25 @@ function renderCites(cites) {
   }
 }
 
+function renderTranscript(turns) {
+  const sec = $('#transcript-sec'), box = $('#transcript');
+  box.innerHTML = '';
+  if (turns.length < 2) { sec.hidden = true; return; }
+  sec.hidden = false;
+  // Everything before the current answer — the thread a follow-up refers to.
+  for (const t of turns.slice(0, -1)) {
+    const d = el('div', 'turn');
+    d.append(el('q', null, t.query), el('p', null, t.narrative));
+    box.append(d);
+  }
+}
+
+$('#reset') && ($('#reset').onclick = async () => {
+  await fetch('/api/v1/reset');
+  $('#transcript-sec').hidden = true;
+  $('#answer').textContent = 'Conversation cleared.';
+});
+
 /* ── run ─────────────────────────────────────────────────── */
 async function run(button) {
   const query = $('#q').value.trim();
@@ -468,6 +502,7 @@ async function run(button) {
     renderStrip(data.stages);
     $('#intro').hidden = true;
     $('#answer-sec').hidden = false;
+    renderTranscript(data.transcript || []);
     $('#answer').textContent = data.narrative || '(no narrative)';
     renderEntities(data.entities);
     renderLedger(data.stages.find(s => s.key === 'verifier'));

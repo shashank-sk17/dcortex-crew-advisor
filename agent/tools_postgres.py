@@ -182,7 +182,12 @@ class PostgresToolPort:
             (crew_id,),
         )
         if not rows:
-            raise ToolError("UNRESOLVED_ENTITY", f"no duty clock for {crew_id!r}")
+            # CoreToolPort overrides `require` with near-match suggestions;
+            # without the engine we can still say plainly that it is unknown.
+            require = getattr(self, "require", None)
+            if require:
+                require("crew", crew_id)
+            raise ToolError("UNRESOLVED_ENTITY", f"there is no crew {crew_id}")
         clock = rows[0]
 
         end = date.fromisoformat(date_) if date_ else clock["as_of_utc"].date()
@@ -251,12 +256,21 @@ class PostgresToolPort:
         raise ToolError("INTERNAL", f"check_legality: {self._NOT_YET}")
 
     def pairing_for_flight(self, flight_id: str) -> str:
+        # CoreToolPort adds near-match suggestions; ask it first so an unknown
+        # flight reports "did you mean" rather than "no pairing operates it",
+        # which reads like a rostering gap instead of a typo.
+        if require := getattr(self, "require", None):
+            require("flight", flight_id)
+
         rows = self._query(
             "select pairing_id from pairing_day_flights where flight_id = %s limit 1",
             (flight_id,),
         )
         if not rows:
-            raise ToolError("UNRESOLVED_ENTITY", f"no pairing operates {flight_id!r}")
+            raise ToolError(
+                "UNRESOLVED_ENTITY",
+                f"{flight_id} exists but is not on any pairing this week",
+            )
         return rows[0]["pairing_id"]
 
     def find_options(self, role: str, pairing_id: str | None = None,

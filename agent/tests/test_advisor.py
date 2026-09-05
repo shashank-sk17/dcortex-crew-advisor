@@ -151,10 +151,17 @@ class TestExemplars:
             pytest.skip("dataset not vendored")
         assert len(block) // 4 < 2000
 
-    def test_system_prompt_inlines_exemplars(self):
+    def test_advisor_prompt_omits_exemplars_by_default(self):
+        """836 of 2,250 input tokens per call were exemplars the advisor never
+        reads — the router classifies 38/38 without a model at all."""
         prompt = system_prompt(Intent.FIND_REPLACEMENT)
-        assert "Worked examples" in prompt
+        assert "Worked examples" not in prompt
         assert "This request" in prompt
+
+    def test_exemplars_available_when_asked_for(self):
+        """The router's fallback path is the one caller that wants them."""
+        assert "Worked examples" in system_prompt(Intent.FIND_REPLACEMENT,
+                                                  with_exemplars=True)
 
     def test_index_returns_contrast_across_tiers(self):
         index = ExemplarIndex()
@@ -514,3 +521,127 @@ class TestRecommendationLeads:
         a = self._answer()
         a.equal_cost_alternatives = 3
         assert "not a uniquely correct choice" in explainer.render_replacement(a)
+
+
+class TestCrewNamedWithoutAPairing:
+    """"C-1042 is sick" names a person, not a trip.
+
+    It routed correctly and then did nothing: seeding needed a pairing, and
+    the model was not going to guess one. The roster knows both the pairing
+    and the role, so neither should be guessed by anyone.
+    """
+
+    def test_a_bare_crew_id_seeds_a_search(self):
+        calls = seed_calls(route("C-1042 is sick"))
+        assert calls, "named a crew member and seeded nothing"
+        assert calls[0].name == "find_options"
+        assert calls[0].args == {"crew_id": "C-1042"}
+
+    def test_it_also_asks_what_breaks(self):
+        names = {c.name for c in seed_calls(route("C-1042 is sick"))}
+        assert "ripple" in names
+
+    def test_role_comes_from_the_roster_not_a_default(self):
+        """Replacing a captain with a first officer is not cover."""
+        from agent.tools_fixtures import FixtureToolPort
+
+        port = FixtureToolPort()
+        assert port.assignment_for_crew("C-1042") == ("P-2291", "Captain")
+
+    def test_unrostered_crew_refuses_rather_than_defaulting(self):
+        from agent.tools import ToolError
+        from agent.tools_fixtures import FixtureToolPort
+
+        with pytest.raises(ToolError):
+            FixtureToolPort().assignment_for_crew("C-9999")
+
+    def test_a_named_pairing_still_wins(self):
+        call = seed_calls(route("Who can cover P-2291 as Captain?"))[0]
+        assert call.args["pairing_id"] == "P-2291"
+
+
+class TestRejectedDraftMessage:
+    def test_no_unsupported_claims_gives_a_useful_reason(self):
+        """"The model's draft claimed , which no tool output supports" is
+        worse than useless — the draft failed because no tool ran."""
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        llm = PlaceholderLLM([LLMResponse(text="Something unsourced.")] * 4)
+        r = Advisor(llm=llm).ask("Who can cover P-9999?")
+        assert all("claimed ," not in n for n in r.unknowns)
+
+
+class TestToolErrorsAreNotParaphrased:
+    """A tool failure is already written for a controller. Rewriting it can
+    only lose or distort the actionable part.
+
+    Asked about C-1045, the model reported "C-1045 isn't rostered on any
+    pairing this week" — the tool had said no such crew exists. It also
+    claimed ripple needed a crew_id that had been supplied, and dropped the
+    "did you mean C-1042" suggestion entirely.
+
+    The verifier passed all of it. The invention was narrative, so it carried
+    no number or identifier to check — the same blind spot as the fabricated
+    duty-limit warning and the leaked chain of thought.
+    """
+
+    def _unavailable(self):
+        from agent.schemas import AdvisorResponse, Intent, ReplacementAnswer, Tier, TraceEntry
+
+        return AdvisorResponse(
+            tier=Tier.REPLACEMENT, intent=Intent.FIND_REPLACEMENT,
+            answer=ReplacementAnswer(),
+            trace=[TraceEntry(tool="find_options",
+                              error="UNRESOLVED_ENTITY: There is no crew C-1045. "
+                                    "Nearest existing: C-1042 (Captain, BLR)")],
+        )
+
+    def test_an_empty_answer_is_never_sent_to_the_model(self):
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        liar = PlaceholderLLM([LLMResponse(text="C-1045 is not rostered this week.")])
+        out = explainer.polish(self._unavailable(), liar)
+        assert "not rostered" not in out
+        assert liar.calls == [], "the model was consulted about a tool failure"
+
+    def test_the_suggestion_survives_verbatim(self):
+        from agent import explainer
+
+        out = explainer.render(self._unavailable())
+        assert "C-1042" in out and "There is no crew C-1045" in out
+
+    def test_a_query_error_is_not_framed_as_a_missing_capability(self):
+        """"There is no crew C-1045" is a finding about the question, not a
+        gap in what we can do."""
+        from agent import explainer
+
+        out = explainer.render(self._unavailable())
+        assert "missing capability" not in out
+        assert "tools it needs are unavailable" not in out
+
+    def test_a_genuine_capability_gap_still_says_so(self):
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, ConsequenceAnswer, Intent, Tier, TraceEntry
+
+        r = AdvisorResponse(
+            tier=Tier.CONSEQUENCE, intent=Intent.JOINT_PLAN,
+            answer=ConsequenceAnswer(),
+            trace=[TraceEntry(tool="joint_plan",
+                              error="INTERNAL: joint_plan: needs the rules engine")],
+        )
+        assert "missing capability" in explainer.render(r)
+
+    def test_a_real_answer_is_still_polished(self):
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+        from agent.schemas import (AdvisorResponse, Intent, Option,
+                                   ReplacementAnswer, Tier, TraceEntry)
+
+        good = AdvisorResponse(
+            tier=Tier.REPLACEMENT, intent=Intent.FIND_REPLACEMENT,
+            answer=ReplacementAnswer(options=[Option("Assign C-3310", "C-3310", True)]),
+            trace=[TraceEntry(tool="find_options", result={"crew_id": "C-3310"})],
+        )
+        llm = PlaceholderLLM([LLMResponse(text="Use C-3310.")])
+        assert explainer.polish(good, llm) == "Use C-3310."

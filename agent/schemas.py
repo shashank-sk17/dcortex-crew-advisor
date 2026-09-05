@@ -183,6 +183,8 @@ class ReplacementAnswer:
     recommended: Option | None = None
     cancellation_multiple: int = 0
     equal_cost_alternatives: int = 0
+    next_tier_cost_inr: int = 0
+    next_tier_premium_inr: int = 0
     uncovered_flights: list[str] = field(default_factory=list)
     at_risk_flights: list[str] = field(default_factory=list)
     passengers_affected: int = 0
@@ -242,6 +244,7 @@ class AdvisorError:
 
 ERROR_CODES = (
     "UNRESOLVED_ENTITY",
+    "NEEDS_CONFIRMATION",   # a near match was found; ask before acting
     "AMBIGUOUS_QUERY",
     "NO_LEGAL_OPTION",
     "OUT_OF_SCOPE",
