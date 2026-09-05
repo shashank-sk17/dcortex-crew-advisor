@@ -100,6 +100,20 @@ def make_port() -> tuple[Any, str]:
 
 
 @lru_cache(maxsize=1)
+def conversation() -> Any:
+    """One session for the console.
+
+    A dev tool with one user, so a process-wide conversation is right; the
+    production API will key this by session. State is what makes follow-ups
+    like "why not C-2087?" mean anything.
+    """
+    from agent.conversation import Conversation
+
+    llm, _, port, _ = backends()
+    return Conversation(port=port, llm=llm)
+
+
+@lru_cache(maxsize=1)
 def backends() -> tuple[Any, str, Any, str]:
     llm, llm_label = make_llm()
     port, port_label = make_port()
@@ -125,13 +139,12 @@ def run_pipeline(query: str) -> dict[str, Any]:  # noqa: C901
     """
     import time
     started = time.perf_counter()
-    llm, _, port, _ = backends()
     entities = extract(query)
     decision = route(query)
     planned = seed_calls(decision)
 
-    advisor = Advisor(port=port, llm=llm)
-    response = advisor.ask(query)
+    convo = conversation()
+    response = convo.ask(query)
 
     verification = verify(response.narrative, response.trace)
     evidence = build_evidence(response.trace)
@@ -228,6 +241,14 @@ def run_pipeline(query: str) -> dict[str, Any]:  # noqa: C901
             },
         ],
         "elapsed_ms": int((time.perf_counter() - started) * 1000),
+        "turn": len(convo.history),
+        "transcript": [
+            {"query": x.query,
+             "narrative": x.response.narrative[:400],
+             "tier": int(x.response.tier)}
+            for x in convo.history[-8:]
+        ],
+        "decisions": convo.decisions,
         "entities": entities.to_dict(),
         "response": response.to_dict(),
         "narrative": response.narrative,
@@ -382,6 +403,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._send_json(scenario_index())
         if path.startswith("/api/scenarios/"):
             return self._send_json(scenario_detail(path.rsplit("/", 1)[-1]))
+        if path == "/api/reset":
+            conversation.cache_clear()
+            return self._send_json({"ok": True, "message": "conversation cleared"})
         if path == "/api/questions":
             return self._send_json(gold_questions())
         if path == "/api/stream":

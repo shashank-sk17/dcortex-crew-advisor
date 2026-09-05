@@ -93,6 +93,50 @@ def tools_for(intent: Intent, port: Any = None) -> list[dict[str, Any]]:
     return narrowed or schemas
 
 
+MISSING_FOR_INTENT: dict[Intent, str] = {
+    Intent.CHECK_LEGALITY: "a crew member and the pairing or flight to check them against",
+    Intent.FIND_REPLACEMENT: "who is unavailable, or which pairing or flight needs cover",
+    Intent.RANK_OPTIONS: "which pairing or flight needs cover",
+    Intent.IMPACT_OF_EVENT: "who or what is disrupted",
+    Intent.JOINT_PLAN: "at least two pairings or crew members",
+    Intent.SIMULATE_WHATIF: "what to change, and which pairing or flight it affects",
+    Intent.RESOLVE_ILLEGAL: "the crew member and date whose assignment is in question",
+    Intent.EXPLAIN_RULE: "a rule id, e.g. RULE-DUTY-02",
+    Intent.LOOKUP_DUTY_CLOCK: "a crew id, e.g. C-1042",
+}
+
+
+def explain_no_tools(route: Route) -> str:
+    """Why nothing ran — never an empty answer.
+
+    A narrow seeding guard used to end the query in silence: no tool fired,
+    the answer object stayed empty, and the controller read "No data was
+    returned for this question." That is the one outcome this system must
+    never produce, because it is indistinguishable from "nothing is wrong".
+
+    So an empty trace reports what was understood, what is missing, and what
+    would unblock it.
+    """
+    ents = route.entities.to_dict()
+    lines = [f"I read this as {str(route.intent).replace('_', ' ').lower()} "
+             f"but could not run it."]
+
+    if ents:
+        found = "; ".join(f"{k.replace('_', ' ')}: {', '.join(map(str, v))}"
+                          for k, v in ents.items())
+        lines.append(f"\nI did pick out — {found}")
+    else:
+        lines.append("\nI could not pick out a single id from that. Crew look "
+                     "like C-1042, pairings like P-2291, flights like DX412.")
+
+    if needed := MISSING_FOR_INTENT.get(route.intent):
+        lines.append(f"\nTo answer it I need {needed}.")
+
+    lines.append("\nNothing was checked, so this is not evidence that the "
+                 "operation is clean.")
+    return "\n".join(lines)
+
+
 def _flight_filters(ents: Any) -> dict[str, Any]:
     """Build a flight filter, honouring a destination when one is named.
 
@@ -143,6 +187,15 @@ def seed_calls(route: Route) -> list[ToolCall]:
         case Intent.CHECK_LEGALITY if ents.primary_crew and ents.primary_pairing:
             add("check_legality",
                 crew_id=ents.primary_crew, pairing_id=ents.primary_pairing)
+
+        case Intent.CHECK_LEGALITY if ents.primary_crew and (
+                ents.flight_ids or ents.flight_nos):
+            # "Move C-2087 onto DX412" names a leg, not a pairing. Crew are
+            # assigned to whole pairings, so the leg has to be resolved first.
+            add("check_legality", crew_id=ents.primary_crew,
+                flight_id=ents.flight_ids[0] if ents.flight_ids else None,
+                flight_no=ents.flight_nos[0] if ents.flight_nos else None,
+                date=ents.primary_date)
 
         case (Intent.FIND_REPLACEMENT | Intent.RANK_OPTIONS) if ents.primary_pairing:
             add("find_options",
@@ -425,6 +478,12 @@ class Advisor:
             unknowns=unknowns,
             trace=turn.trace,
         )
+
+        if not turn.trace:
+            # Nothing ran at all. Say why rather than returning silence.
+            response.narrative = explain_no_tools(turn.route)
+            response.confidence = Confidence.LOW
+            return response
 
         narrative = explainer.render(response)
         if self.cfg.polish:
