@@ -92,6 +92,9 @@ class Entities:
     roles: list[str] = field(default_factory=list)
     cert_types: list[str] = field(default_factory=list)
     horizon_days: int | None = None
+    names: list[str] = field(default_factory=list)
+    """Words that look like a crew member's name. Candidates only — nothing
+    here is a person until the roster says so."""
 
     def to_dict(self) -> dict[str, Any]:
         # `slots=True` means there is no __dict__ to iterate.
@@ -173,6 +176,38 @@ _HORIZON_RE = re.compile(
 _HORIZON_UNIT_DAYS = {"day": 1, "week": 7, "month": 30}
 
 
+# A person written the way the system writes them back — "A. Nair" — or a
+# bare capitalised surname. These are *candidates*: the roster decides which
+# are people, because the alternative is a hardcoded name list that goes stale
+# the moment the dataset changes.
+PERSON_RE = re.compile(r"\b([A-Z]\.\s*[A-Z][a-z]{2,})\b|\b([A-Z][a-z]{2,})\b")
+
+# Capitalised words that open a sentence or name a concept, not a person.
+_NOT_A_NAME = frozenset({
+    "The", "This", "That", "Who", "Which", "What", "When", "Where", "Why",
+    "How", "Can", "Does", "Draft", "List", "Show", "Give", "Find", "Move",
+    "Captain", "First", "Officer", "Senior", "Cabin", "Crew", "Reserve",
+    "Pairing", "Flight", "Rule", "Duty", "Sick", "Both", "Please", "Would",
+    "Should", "Their", "There", "They", "Available", "Legal", "Any", "All",
+})
+
+
+def extract_names(text: str) -> list[str]:
+    """Names a controller might have used instead of an id.
+
+    Only candidates. "Nair" is seven people in this dataset and "A. Nair" is
+    two, so nothing here resolves to a person without the roster — and where
+    it is ambiguous the controller is asked, never guessed at.
+    """
+    found: list[str] = []
+    for full, bare in PERSON_RE.findall(text):
+        value = (full or bare).strip()
+        if not value or value in _NOT_A_NAME:
+            continue
+        found.append(re.sub(r"\.\s+", ". ", value))
+    return _dedupe(found)
+
+
 def extract_horizon(text: str) -> int | None:
     """A forward-looking window in days — "within 30 days", "next 2 weeks".
 
@@ -248,6 +283,7 @@ def extract(text: str) -> Entities:
         roles=roles,
         cert_types=_dedupe(certs),
         horizon_days=extract_horizon(text),
+        names=extract_names(text),
     )
 
 

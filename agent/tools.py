@@ -336,6 +336,25 @@ def with_crew_identity(rows: list[dict[str, Any]],
     return out
 
 
+def crew_named(port: Any, name: str) -> list[dict[str, Any]]:
+    """Roster entries whose name matches, by surname or in full.
+
+    Deliberately returns every match rather than a best one. In this dataset
+    all 150 crew share 20 surnames — "Nair" is seven people and "A. Nair" is
+    two of them, a Captain and a Cabin Crew member at the same base. There is
+    no defensible way to pick one, so the caller asks.
+    """
+    wanted = name.strip().lower()
+    if not wanted:
+        return []
+    out = []
+    for row in port.lookup("crew"):
+        full = str(row.get("name") or "").lower()
+        if full == wanted or full.split()[-1:] == [wanted]:
+            out.append(row)
+    return out
+
+
 def _comparable(value: Any) -> Any:
     """Coerce a value so a row and a filter bound can be ordered together.
 

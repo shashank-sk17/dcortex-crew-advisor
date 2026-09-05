@@ -116,6 +116,10 @@ MISSING_FOR_INTENT: dict[Intent, str] = {
     Intent.RESOLVE_ILLEGAL: "the crew member and date whose assignment is in question",
     Intent.EXPLAIN_RULE: "a rule id, e.g. RULE-DUTY-02",
     Intent.LOOKUP_DUTY_CLOCK: "a crew id, e.g. C-1042",
+    # An unfiltered crew lookup is 150 rows, which is not an answer to
+    # anything a controller actually asked.
+    Intent.LOOKUP_CREW: ("something to narrow by — a crew id, a rank, a base, "
+                         "or an aircraft rating"),
 }
 
 
@@ -249,7 +253,7 @@ def seed_calls(route: Route) -> list[ToolCall]:
             add("lookup", entity="risk_signals",
                 filters={"crew_id": ents.primary_crew} if ents.primary_crew else {})
 
-        case Intent.LOOKUP_CREW:
+        case Intent.LOOKUP_CREW if _crew_filters(ents):
             add("lookup", entity="crew", filters=_crew_filters(ents))
 
         case Intent.LOOKUP_ROSTER if ents.primary_pairing:

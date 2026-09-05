@@ -214,3 +214,67 @@ class TestCrewAreNamed:
 
         row = {"crew_id": "C-2087", "name": "R. Iyer", "rank": "Captain"}
         assert _name_of(row, "C-2087") == "Captain R. Iyer (C-2087)"
+
+
+class TestNamedPeople:
+    """The system writes "Captain A. Nair (C-1042)", so a controller writes
+    "Nair" back. If that is not understood the query runs with no crew filter
+    and answers a question about one person with all 150 of them."""
+
+    def _convo(self):
+        from agent.conversation import Conversation
+        from agent.tools import PlaceholderToolPort
+
+        return Conversation(port=PlaceholderToolPort())
+
+    def test_a_shared_surname_asks_which(self):
+        """Every surname in this dataset is shared — Nair is seven people."""
+        r = self._convo().ask("is Nair available?")
+        assert r.awaiting == "confirmation"
+        assert "C-1042" in r.narrative and "C-5820" in r.narrative
+        assert "will not guess" in r.narrative
+
+    def test_even_a_full_name_can_be_two_people(self):
+        """A. Nair is a Captain and a Cabin Crew member, both at BLR."""
+        r = self._convo().ask("is A. Nair available?")
+        assert r.awaiting == "confirmation"
+        assert "C-1042" in r.narrative and "C-3145" in r.narrative
+
+    def test_a_rank_narrows_it_to_one(self):
+        c = self._convo()
+        r = c.ask("is Captain N. Nair available?")
+        assert r.awaiting is None
+        assert any("C-5820" in str(e.args) or "C-5820" in str(e.result)
+                   for e in r.trace)
+
+    def test_context_beats_the_roster(self):
+        """Right after discussing C-1042, "Nair" means that one."""
+        c = self._convo()
+        c.ask("C-1042 is sick, who do I use?")
+        r = c.ask("is Nair available?")
+        assert r.awaiting is None, "asked which, when the last turn had said"
+
+    def test_a_near_miss_name_suggests_rather_than_lists_everyone(self):
+        r = self._convo().ask("is Nayar available?")
+        assert r.awaiting == "detail"
+        assert "Nair" in r.narrative
+        assert "150" not in r.narrative
+
+    def test_an_unknown_name_says_so_instead_of_dumping_the_roster(self):
+        r = self._convo().ask("is Smithson available?")
+        assert r.awaiting == "detail"
+        assert "No crew called Smithson" in r.narrative
+        assert "records." not in r.narrative
+
+    def test_a_capitalised_non_name_does_not_derail_the_question(self):
+        """"Sep" is not a person. Only words the roster recognises are."""
+        r = self._convo().ask("Is A. Nair on duty on 15 Sep?")
+        assert "Sep" not in (r.narrative[:60])
+
+    def test_an_unfiltered_crew_lookup_is_never_an_answer(self):
+        """150 rows is not a reply to anything a controller asked."""
+        from agent.advisor import seed_calls
+        from agent.router import route
+
+        assert seed_calls(route("list all crew")) == []
+        assert seed_calls(route("Which Captains are based at BLR?"))
