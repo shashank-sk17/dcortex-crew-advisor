@@ -298,7 +298,10 @@ class PostgresToolPort:
 
     _NOT_YET = "needs the rules engine in core/ — see issues #3-#12"
 
-    def check_legality(self, crew_id: str, pairing_id: str, delay_h: float = 0.0) -> dict[str, Any]:
+    def check_legality(self, crew_id: str, pairing_id: str | None = None,
+                       flight_id: str | None = None, flight_no: str | None = None,
+                       date: str | None = None,
+                       delay_h: float = 0.0) -> dict[str, Any]:
         raise ToolError("INTERNAL", f"check_legality: {self._NOT_YET}")
 
     def pairing_for_flight(self, flight_id: str) -> str:
@@ -319,8 +322,9 @@ class PostgresToolPort:
             )
         return rows[0]["pairing_id"]
 
-    def find_options(self, role: str, pairing_id: str | None = None,
-                     flight_id: str | None = None,
+    def find_options(self, role: str | None = None, pairing_id: str | None = None,
+                     flight_id: str | None = None, crew_id: str | None = None,
+                     flight_no: str | None = None, date: str | None = None,
                      callout_utc: str | None = None) -> dict[str, Any]:
         raise ToolError("INTERNAL", f"find_options: {self._NOT_YET}")
 

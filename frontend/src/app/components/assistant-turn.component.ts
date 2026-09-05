@@ -6,31 +6,22 @@ import {
 import { API } from '../core/api.port';
 import { Decision } from '../core/api.types';
 import { ConversationStore } from '../services/conversation.store';
-import { Tier1TableComponent } from './tier1-table.component';
-import { ImpactCardComponent } from './impact-card.component';
-import { OptionsCardComponent } from './options-card.component';
-import { RuleTraceComponent } from './rule-trace.component';
-import { TracePanelComponent } from './trace-panel.component';
-import { AbstainCardComponent } from './abstain-card.component';
-
-const TIER_LABEL: Record<number, string> = {
-  1: 'Lookup',
-  2: 'Replacement',
-  3: 'Consequence',
-};
 
 /**
- * One advisor answer, rendered deterministic-first: typed answer card → rule
- * trace → reasoning trail → LLM prose LAST. Why: the layout is the argument —
- * delete the prose and the answer is still complete.
+ * One advisor answer: the prose, plus Accept/Modify when it recommends someone.
+ *
+ * This used to render deterministic-first — answer card, rule trace, reasoning
+ * trail, prose last. That surfaced every stage of the pipeline in the chat and
+ * buried the answer under it. Now the prose IS the answer and the pipeline is
+ * not shown.
+ *
+ * Accept/Modify stayed: without them a ranked recommendation cannot be acted
+ * on and no decision reaches the audit log.
  */
 @Component({
   selector: 'app-assistant-turn',
   standalone: true,
-  imports: [
-    DecimalPipe, Tier1TableComponent, ImpactCardComponent, OptionsCardComponent,
-    RuleTraceComponent, TracePanelComponent, AbstainCardComponent,
-  ],
+  imports: [DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './assistant-turn.component.html',
   styleUrl: './assistant-turn.component.scss',
@@ -41,20 +32,34 @@ export class AssistantTurnComponent {
   private api = inject(API);
   private conversation = inject(ConversationStore);
 
-  /** The controller's decision on this turn's recommendation, once recorded. */
-  readonly decision = signal<Decision | null>(null);
   readonly showModify = signal(false);
   readonly chosenCrewId = signal<string | null>(null);
   readonly reason = signal('');
   readonly deciding = signal(false);
 
-  get tierLabel(): string | null {
-    return this.turn.tier != null ? (TIER_LABEL[this.turn.tier] ?? `Tier ${this.turn.tier}`) : null;
+  /** The pairing or flight this turn is about, when it names one. */
+  get knownRef(): string | null {
+    return this.turn.entities['pairing_id'] ?? this.turn.entities['flight_id'] ?? null;
   }
 
-  get lookup(): LookupAnswer | null {
-    return this.turn.answer?.kind === 'lookup' ? this.turn.answer : null;
+  /**
+   * Key for the assignment this turn would record.
+   *
+   * Falls back to the recommended crew id rather than the turn's UUID, so the
+   * agent's "Recorded: …" acknowledgment — a different turn, carrying the same
+   * inherited options — resolves to the same key and shows the assignment
+   * instead of offering to make it again.
+   */
+  get disruptionRef(): string {
+    const opts = this.replacement?.options ?? this.consequence?.options ?? [];
+    return this.knownRef ?? opts[0]?.crew_id ?? this.turn.id;
   }
+
+  /** The assignment recorded against this disruption, by any turn. */
+  decision(): Decision | null {
+    return this.conversation.decisionFor(this.disruptionRef);
+  }
+
   get replacement(): ReplacementAnswer | null {
     return this.turn.answer?.kind === 'replacement' ? this.turn.answer : null;
   }
@@ -87,6 +92,18 @@ export class AssistantTurnComponent {
       };
     });
     return [...nearMiss, ...overrides].filter((o) => o.crew_id);
+  }
+
+  /**
+   * The legal options the prose actually recommends, as Assign buttons. The
+   * options card used to carry these; with it gone they would otherwise be
+   * unreachable, leaving a recommendation you can read but not act on.
+   * Capped at three — the prose names one or two, and a wall of buttons is
+   * the card by another name.
+   */
+  get acceptableOptions(): Option[] {
+    const opts = this.replacement?.options ?? this.consequence?.options ?? [];
+    return opts.filter((o) => o.crew_id && o.legal).slice(0, 3);
   }
 
   /** The agent asked a question instead of answering — docs/FRONTEND.md §2. */
@@ -122,17 +139,21 @@ export class AssistantTurnComponent {
    */
   private record(option: Option, accepted: boolean, reason?: string): void {
     this.deciding.set(true);
-    const ref = this.turn.entities['flight_id'] ?? this.turn.entities['pairing_id'] ?? this.turn.id;
+    const ref = this.disruptionRef;
     this.api.postDecision({
       disruption_ref: ref, chosen_option: option, weights: {}, accepted, note: reason || undefined,
     }).subscribe({
       next: (d) => {
         this.deciding.set(false);
         this.showModify.set(false);
-        this.decision.set(d);
+        this.conversation.recordDecision(ref, d);
+        // Name the pairing only when we actually know it. The fallback ref is
+        // a turn UUID, and "…for adabb2b3-65ee-4f21-8afb-6342b8ef38f8" was
+        // being shown to the controller as if it meant something.
+        const where = this.knownRef ? ` for ${this.knownRef}` : '';
         const msg = reason
-          ? `Confirm assignment: ${option.crew_id} — ${option.action} for ${ref}. Reason: ${reason}`
-          : `Confirm assignment: ${option.crew_id} — ${option.action} for ${ref}.`;
+          ? `Confirm assignment: ${option.crew_id} — ${option.action}${where}. Reason: ${reason}`
+          : `Confirm assignment: ${option.crew_id} — ${option.action}${where}.`;
         this.conversation.ask(msg);
       },
       error: () => {

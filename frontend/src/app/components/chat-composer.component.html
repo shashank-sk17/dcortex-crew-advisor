@@ -7,9 +7,16 @@
     (keydown.enter)="onEnter($event)"
     [disabled]="store.busy()"
   ></textarea>
-  <button type="submit" [disabled]="store.busy() || !text.trim()">
-    {{ store.busy() ? '…' : 'Ask' }}
-  </button>
+  @if (store.busy()) {
+    <!-- Occupies the Ask button's place rather than sitting beside it: while a
+         turn is running that button is dead anyway, and stopping is the only
+         thing the controller can usefully do. -->
+    <button type="button" class="stop" (click)="store.stop()" title="Stop the advisor">
+      Stop
+    </button>
+  } @else {
+    <button type="submit" [disabled]="!text.trim()">Ask</button>
+  }
   @if (!store.isEmpty()) {
     <button type="button" class="ghost" (click)="store.reset()" [disabled]="store.busy()">Clear</button>
   }

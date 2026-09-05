@@ -506,15 +506,64 @@ Rules, in order of importance:
 4. Lead with what was asked. Mention what a controller would want next only
    if it is in the rows — current pairing, duty headroom, anything expiring.
 5. No preamble, no "based on the data provided". Two to five sentences.
+6. Your prose is the ENTIRE answer — no table is shown beneath it any more. So
+   state the actual values: the hours, the dates, the ids, the names. "C-1042
+   has duty headroom remaining" is useless; "C-1042 has 39.07h of its 60h
+   weekly limit left" is the answer.
+7. If the rows are a list of people, list them — id, name and the one field
+   that was asked about, one per line. Do not summarise a roster into "several
+   crew are on reserve".
+8. Plain English. No fixed-width columns, no ASCII rules, no dashes as table
+   borders — it is read in a chat bubble a few hundred pixels wide.
 """
 
 
 _POLISH_INSTRUCTIONS = """\
 You are writing for an airline crew controller under time pressure.
 
-Rewrite the structured summary below as you would say it to them: lead with
-the recommendation, then why, then what it costs and what it breaks. Cite rule
-ids inline where they decided something.
+The controller is already looking at the structured answer. The console has
+rendered, above your text: the ranked options card (every candidate with its
+cost, delay and an Accept button), the excluded pool and why each was dropped,
+the seven-rule verdict trace with its hour figures, and the tool trail. All of
+it is on screen and clickable.
+
+So do not restate it. Your job is the one thing a card cannot do — make the
+call. Write two or three sentences:
+
+1. The recommendation, and the single reason it wins.
+2. Only if it is not already obvious from the card: the one thing the
+   controller should know before accepting — a risk, a trade-off, or what to
+   fall back to.
+
+Do NOT walk through the alternatives one by one. Do NOT recite rule ids with
+their hour figures; name a rule only when that rule is itself the reason the
+recommendation is what it is. Do NOT repeat the funnel counts. Anything a
+controller can read off the card in a glance is not worth a sentence.
+
+Absolute constraint: you may reword, reorder and compress. You may NOT add any
+identifier, number, name or claim that is not already present. If something is
+missing, leave it missing — a verifier will reject this answer otherwise.
+"""
+
+
+_IMPACT_INSTRUCTIONS = """\
+You are writing for an airline crew controller under time pressure.
+
+This answer is an assessment, NOT a recommendation. The controller asked what
+an event breaks — which flights are uncrewed, who is now at risk, what the
+knock-on is. There is no options card and no Accept button on this answer, so
+do not tell them to accept anything, do not say "before you click", and do not
+name a top-ranked option. Nothing has been chosen yet.
+
+The console has already rendered the impact card and the tool trail above your
+text. Answer the question that was asked, in two or three sentences:
+
+1. What is broken, concretely — the flights, the pairing, the people.
+2. The consequence that is not visible at a glance: what breaks next, or who
+   is closest to a limit as a result.
+
+Do not recommend a replacement unless they asked for one. Do not recite rule
+ids with their hour figures.
 
 Absolute constraint: you may reword, reorder and compress. You may NOT add any
 identifier, number, name or claim that is not already present. If something is
@@ -528,6 +577,7 @@ def _with_naming(instructions: str) -> str:
 
 LOOKUP_INSTRUCTIONS = _with_naming(_LOOKUP_INSTRUCTIONS)
 POLISH_INSTRUCTIONS = _with_naming(_POLISH_INSTRUCTIONS)
+IMPACT_INSTRUCTIONS = _with_naming(_IMPACT_INSTRUCTIONS)
 
 
 def polish(response: AdvisorResponse, llm: LLM | None = None) -> str:
@@ -578,7 +628,11 @@ def polish(response: AdvisorResponse, llm: LLM | None = None) -> str:
         text = (result.text or "").strip()
         if not text or text.startswith("[placeholder]"):
             return template
-        return f"{text}\n\n{template}"
+        # Prose only. The fixed-width table used to ride along underneath as
+        # evidence, which worked when the console rendered it as a table — but
+        # in a chat bubble it reflows into an unreadable run-on, and a dossier
+        # question returns seven of them. The answer is the sentences.
+        return text
 
     # Never paraphrase a tool failure. The error text is already written for a
     # controller and often carries the only actionable content — "there is no
@@ -593,11 +647,19 @@ def polish(response: AdvisorResponse, llm: LLM | None = None) -> str:
     if not has_content(response.answer):
         return template
 
+    # An answer with no options is an assessment, not a recommendation. Told to
+    # "lead with the recommendation", the model answered "which flights are now
+    # uncrewed?" with "accept the top-ranked option" — advice to click a card
+    # this answer does not have, in place of the impact that was asked for.
+    has_options = bool(getattr(response.answer, "options", None))
     result = llm.complete(
-        system=POLISH_INSTRUCTIONS,
+        system=POLISH_INSTRUCTIONS if has_options else IMPACT_INSTRUCTIONS,
         messages=[{"role": "user", "content": template}],
         model=config.EXPLAINER_MODEL,
-        max_tokens=1024,
+        # Two or three sentences. 1024 was sized for prose that carried the
+        # whole answer; the options card, rule trace and funnel carry it now,
+        # so a ceiling here is a second guard on the instructions above.
+        max_tokens=300,
     )
     text = (result.text or "").strip()
     if not text or text.startswith("[placeholder]"):

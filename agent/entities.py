@@ -205,6 +205,12 @@ _NOT_A_NAME = frozenset({
     "Captain", "First", "Officer", "Senior", "Cabin", "Crew", "Reserve",
     "Pairing", "Flight", "Rule", "Duty", "Sick", "Both", "Please", "Would",
     "Should", "Their", "There", "They", "Available", "Legal", "Any", "All",
+    # Words that open a follow-up about the options already on the table.
+    # "Next cheapest option?" was read as a surname and answered "no crew
+    # called Next" — a question about the ranking mistaken for a person.
+    "Next", "Cheapest", "Other", "Another", "Option", "Options", "Same",
+    "Take", "Assign", "Call", "Book", "Choose", "Pick", "Instead", "Cost",
+    "Alternative", "Alternatives", "Second", "Third", "Last", "Best",
 })
 
 

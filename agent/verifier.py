@@ -101,6 +101,32 @@ ID_PATTERNS = (
     DATE_RE, CLOCK_RE,
 )
 
+# A date written the way a controller writes it. `DATE_RE` above catches the
+# ISO form the tools return, but the model answers "on 15 Sep" — and the bare
+# `15` then reads as an unsourced quantity, because no tool output contains the
+# number 15 on its own. That one digit was discarding entire correct answers:
+# the question said "15 Sep", the prose repeated it, and the gate threw the
+# prose away and shipped the raw table instead.
+#
+# A calendar reference is not a claim about the world. The date itself is still
+# checked wherever it appears in ISO form, which is how the tools state it.
+PROSE_DATE_RE = re.compile(
+    r"\b\d{1,2}\s*(?:st|nd|rd|th)?\s+"
+    r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b"
+    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+"
+    r"\d{1,2}\s*(?:st|nd|rd|th)?\b",
+    re.I,
+)
+
+# "in the next 30 days", "over the last 14 days" — the window the question
+# itself named, echoed back. It describes the scope of the answer, not a
+# measured value, and no tool returns it as a number to match against.
+WINDOW_RE = re.compile(
+    r"\b(?:next|last|past|coming|previous|preceding)\s+\d+\s*"
+    r"(?:day|week|month|hour|hr)s?\b",
+    re.I,
+)
+
 
 @dataclass(slots=True)
 class Claim:
@@ -195,6 +221,9 @@ def _strip_identifiers(text: str) -> str:
     """
     for pattern in ID_PATTERNS:
         text = pattern.sub(" ", text)
+    # Calendar references and restated question windows are not quantities.
+    text = PROSE_DATE_RE.sub(" ", text)
+    text = WINDOW_RE.sub(" ", text)
     return text
 
 

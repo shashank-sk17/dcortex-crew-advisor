@@ -27,13 +27,6 @@ const LOCAL_SCENARIOS: ScenarioSummary[] = [
     prompt: 'At 00:30Z on 18 Sep the captains of both VT-DXA (C-3940) and VT-DXB (C-1938) call in sick. Give the optimal joint crewing plan.' },
 ];
 
-export const SEEDED_ASKS: string[] = [
-  'Who is on reserve at BLR on 2026-09-15, and what are their on-call windows?',
-  'Captain C-1042 called in sick for P-2291 on 15 Sep — who do I use?',
-  'Captain C-1042 is out for P-2291. What should I do?',
-  "What's the weather forecast at BLR tomorrow morning?",
-];
-
 /**
  * Scenario feed (S1–S6) and the policy-slider re-rank, both with local fallbacks.
  * Why: keeps `/scenarios` + `/rank` off the components and works with no backend.

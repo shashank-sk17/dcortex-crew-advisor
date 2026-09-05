@@ -1,13 +1,16 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { ConversationStore } from '../services/conversation.store';
-import { SEEDED_ASKS } from '../services/scenarios.service';
 import { AssistantTurn, UserTurn } from '../models/agent-events';
 import { AssistantTurnComponent } from './assistant-turn.component';
 
 /**
- * The advisor thread — seeded-prompt empty state, then alternating controller
- * bubbles and streamed assistant turns. Why: it only renders `ConversationStore`
- * state, so all streaming logic stays in the store.
+ * The advisor thread — alternating controller bubbles and streamed assistant
+ * turns. Why: it only renders `ConversationStore` state, so all streaming
+ * logic stays in the store.
+ *
+ * The empty state offers no example questions. A controller opens this with a
+ * disruption already in hand; canned prompts would put words in their mouth
+ * and make the demo look scripted. Every turn starts with what they typed.
  */
 @Component({
   selector: 'app-conversation',
@@ -19,7 +22,6 @@ import { AssistantTurnComponent } from './assistant-turn.component';
 })
 export class ConversationComponent {
   readonly store = inject(ConversationStore);
-  readonly seeds = SEEDED_ASKS;
 
   asUser(t: unknown): UserTurn {
     return t as UserTurn;

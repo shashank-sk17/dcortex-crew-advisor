@@ -14,3 +14,15 @@ button {
 }
 button:disabled { opacity: .5; cursor: not-allowed; }
 .ghost { background: transparent; border-color: var(--line); color: var(--fg-2); }
+
+/* Never disabled — it is the one control that must always answer while the
+   agent is working. Neutral rather than destructive-red: stopping a turn
+   throws nothing away. */
+.stop {
+  background: var(--surface-0); border-color: var(--line); color: var(--fg-1);
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+}
+.stop::before {
+  content: ''; width: 9px; height: 9px; border-radius: 2px; background: currentColor;
+}
+.stop:hover { border-color: var(--accent-line); color: var(--fg-0); }

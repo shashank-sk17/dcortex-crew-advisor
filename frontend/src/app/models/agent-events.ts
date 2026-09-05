@@ -293,6 +293,9 @@ export interface AssistantTurn {
    * prompt, nothing else, and route the next message as the reply (§2). */
   awaiting: 'confirmation' | 'detail' | null;
   error: string | null;
+  /** The controller stopped this turn mid-flight. Not an error — whatever the
+   * agent had already returned stays on screen, it just stops here. */
+  stopped: boolean;
   elapsedMs: number | null;
   grounded: boolean | null;
   streaming: boolean;
@@ -326,6 +329,7 @@ export function emptyAssistantTurn(id: string, query: string | null = null): Ass
     abstain: null,
     awaiting: null,
     error: null,
+    stopped: false,
     elapsedMs: null,
     grounded: null,
     streaming: true,

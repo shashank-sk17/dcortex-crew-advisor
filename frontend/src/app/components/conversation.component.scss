@@ -2,13 +2,6 @@
 
 .empty { max-width: 560px; margin: 8vh auto 0; }
 .empty h2 { font-size: 20px; margin-bottom: 8px; }
-.seeds { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
-.seed {
-  text-align: left; padding: 10px 12px; border: 1px solid var(--line);
-  border-radius: 8px; background: var(--surface-1); color: var(--fg-1); font-size: 14px;
-}
-.seed:hover { border-color: var(--accent-line); color: var(--fg-0); }
-
 .thread { display: flex; flex-direction: column; }
 .user {
   align-self: flex-end; max-width: 80%;
