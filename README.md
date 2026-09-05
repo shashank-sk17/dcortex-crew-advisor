@@ -489,14 +489,14 @@ python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\Ac
 pip install -r requirements.txt
 
 python crew-ops-advisor-dataset/validate.py          # prints PASS
-pytest -q                                            # 241 passing
+pytest -q                                            # 300 passing
 ```
 
 Then put the database URL in `.env` (ask Shashank — it is not in the repo) and
 start the console:
 
 ```bash
-AGENT_DATA=core python -m devui.server               # http://localhost:8420
+AGENT_DATA=core AGENT_LLM=anthropic python -m devui.server   # localhost:8420
 ```
 
 ### Read next
@@ -505,6 +505,7 @@ AGENT_DATA=core python -m devui.server               # http://localhost:8420
 |---|---|
 | [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) | **Start here.** What the system does, the five stages, the traps in the data, and what the model is actually for. |
 | [`docs/SETUP.md`](docs/SETUP.md) | macOS and Windows setup, backends, troubleshooting |
+| [`docs/FRONTEND.md`](docs/FRONTEND.md) | **integration guide for the UI** — response shapes, what to render, and the question-vs-answer trap |
 | [`agent/README.md`](agent/README.md) | the advisor layer in detail |
 | [`docs/RULES.md`](docs/RULES.md) | the seven rules and the two conventions that cause silent wrong answers |
 | [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) | if you are building against the API |

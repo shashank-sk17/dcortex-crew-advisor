@@ -645,3 +645,134 @@ class TestToolErrorsAreNotParaphrased:
         )
         llm = PlaceholderLLM([LLMResponse(text="Use C-3310.")])
         assert explainer.polish(good, llm) == "Use C-3310."
+
+
+class TestVerdictStatusSurvivesTheToolBoundary:
+    """The most dangerous bug found in this system so far.
+
+    `RuleVerdict.failed` compared `status is Verdict.FAIL`. Verdicts cross the
+    tool boundary as JSON, so status arrives as the string "FAIL" — identity
+    is False, the breach reads as a pass, and an illegal assignment is
+    reported legal. Comparison is by value now, and the enum is rebuilt on the
+    way in.
+    """
+
+    def test_a_string_status_still_counts_as_failed(self):
+        from agent.schemas import RuleVerdict
+
+        v = RuleVerdict(rule_id="RULE-DUTY-02", status="FAIL", detail="over by 1h20m")
+        assert v.failed, "a breach read as a pass"
+
+    def test_coercion_rebuilds_the_enum(self):
+        from agent.advisor import _coerce
+        from agent.schemas import RuleVerdict, Verdict
+
+        got = _coerce(RuleVerdict, [{"rule_id": "RULE-FDP-01", "status": "PASS"}])
+        assert got[0].status is Verdict.PASS
+
+    def test_a_breach_is_never_narrated_as_legal(self):
+        from agent import explainer
+        from agent.schemas import (AdvisorResponse, Intent, ReplacementAnswer,
+                                   RuleVerdict, Tier, TraceEntry)
+
+        r = AdvisorResponse(
+            tier=Tier.REPLACEMENT, intent=Intent.CHECK_LEGALITY,
+            answer=ReplacementAnswer(
+                subject="C-2087", legal=False,
+                verdicts=[RuleVerdict(rule_id="RULE-DUTY-02", status="FAIL",
+                                      detail="would exceed 60h/7d by 1h20m")]),
+            trace=[TraceEntry(tool="check_legality", result={"legal": False})],
+        )
+        out = explainer.render(r)
+        assert "would breach" in out
+        assert "is legal" not in out
+
+
+class TestLegalityAnswersAreNotDiscarded:
+    """"Does any rule breach?" computed the right verdict and then reported
+    "No data was returned" — build_answer only read find_options and ripple,
+    so every check_legality result was thrown away."""
+
+    def _response(self, legal, verdicts):
+        from agent.advisor import build_answer
+        from agent.router import route
+        from agent.schemas import TraceEntry
+
+        trace = [TraceEntry(tool="check_legality",
+                            result={"crew_id": "C-2087", "legal": legal,
+                                    "verdicts": verdicts})]
+        return build_answer(route("If C-2087 covers P-2291, does any rule breach?"), trace)
+
+    def test_the_verdict_reaches_the_answer_object(self):
+        body = self._response(False, [{"rule_id": "RULE-DUTY-02", "status": "FAIL",
+                                       "detail": "over by 1h20m"}])
+        assert body.subject == "C-2087" and body.legal is False
+        assert body.verdicts[0].failed
+
+    def test_it_counts_as_content(self):
+        from agent import explainer
+
+        assert explainer.has_content(
+            self._response(True, [{"rule_id": "RULE-FDP-01", "status": "PASS"}]))
+
+
+class TestClarifyingQuestionsReachTheController:
+    """A tool can end a turn by asking something only a human can settle.
+
+    "DX412 operates on three dates — which do you mean?" was being answered by
+    the model itself: it checked all three and narrated whichever it preferred,
+    so the same question gave different answers on different runs. One run led
+    with CERT-06 on the 19th, the next with DUTY-02 on the 15th. Both true,
+    neither asked for.
+    """
+
+    def _port_that_asks(self, code="AMBIGUOUS_QUERY"):
+        from agent.tools import PlaceholderToolPort, ToolError
+
+        class Asking(PlaceholderToolPort):
+            def check_legality(self, crew_id, pairing_id=None, **kw):
+                raise ToolError(code, "DX412 operates on three dates. Which?")
+
+        return Asking()
+
+    def _eager_llm(self):
+        """A model that tries to answer the question itself."""
+        from agent.llm import LLMResponse, PlaceholderLLM, ToolCall
+
+        return PlaceholderLLM([
+            LLMResponse(tool_calls=[ToolCall("1", "check_legality",
+                                             {"crew_id": "C-2087",
+                                              "pairing_id": "P-2291"})],
+                        stop_reason="tool_use")] * 6)
+
+    def test_the_loop_stops_on_a_clarifying_question(self):
+        llm = self._eager_llm()
+        r = Advisor(port=self._port_that_asks(), llm=llm).ask(
+            "If C-2087 covers P-2291, does any rule breach?")
+        assert len(r.trace) == 1, "kept calling tools past a question for the human"
+
+    def test_the_question_is_the_answer(self):
+        r = Advisor(port=self._port_that_asks(), llm=self._eager_llm()).ask(
+            "If C-2087 covers P-2291, does any rule breach?")
+        assert "Which?" in r.narrative
+        assert r.confidence is Confidence.HIGH
+
+    def test_a_needs_confirmation_halts_too(self):
+        r = Advisor(port=self._port_that_asks("NEEDS_CONFIRMATION"),
+                    llm=self._eager_llm()).ask(
+            "If C-2087 covers P-2291, does any rule breach?")
+        assert len(r.trace) == 1
+
+    def test_an_ordinary_failure_is_not_treated_as_a_question(self):
+        """A missing capability is not something the desk can answer, so it
+        must not end the turn as though we had asked them something."""
+        from agent.tools import PlaceholderToolPort, ToolError
+
+        class Broken(PlaceholderToolPort):
+            def check_legality(self, crew_id, pairing_id=None, **kw):
+                raise ToolError("INTERNAL", "needs the rules engine")
+
+        r = Advisor(port=Broken(), llm=self._eager_llm()).ask(
+            "If C-2087 covers P-2291, does any rule breach?")
+        assert "needs the rules engine" in r.narrative
+        assert r.confidence is Confidence.LOW, "a capability gap read as confident"

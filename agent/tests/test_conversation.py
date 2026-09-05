@@ -132,3 +132,53 @@ class TestNoPriorContext:
         c = Conversation(llm=PlaceholderLLM())
         r = c.ask("why not C-2087?")
         assert "60h/7d" not in r.narrative
+
+
+class TestStatedRankIsCheckedAgainstTheRoster:
+    """dCortex's own problem statement says "FO C-2087" and their dataset
+    README flags it as an erratum — C-2087 is a Captain.
+
+    So a judge may well type the wrong rank, because their document told them
+    to. Accepting it silently answers about the wrong seat; the roster knows,
+    so it should say.
+    """
+
+    def test_only_a_descriptive_rank_is_checked(self):
+        from agent.entities import stated_ranks
+
+        assert stated_ranks("If I move FO C-2087 onto DX412") == [("C-2087", "First Officer")]
+        # A role naming the seat to fill asserts nothing about a person.
+        assert stated_ranks("who can cover P-2291 as Captain") == []
+
+    def test_a_wrong_rank_stops_and_asks(self):
+        from agent.advisor import Advisor
+        from agent.tools_fixtures import FixtureToolPort
+
+        r = Advisor(port=FixtureToolPort(), llm=PlaceholderLLM()).ask(
+            "If I move FO C-2087 onto DX412, does anyone breach a duty limit?")
+        assert "is a Captain, not a First Officer" in r.narrative
+        assert len(r.trace) == 1, "ran tools before resolving who was meant"
+
+    def test_the_right_rank_passes_through(self):
+        from agent.advisor import Advisor
+        from agent.tools_fixtures import FixtureToolPort
+
+        r = Advisor(port=FixtureToolPort(), llm=PlaceholderLLM()).ask(
+            "Captain C-1042 calls in sick")
+        assert "not a" not in r.narrative
+
+    def test_confirming_proceeds_with_the_roster_rank(self):
+        from agent.tools_fixtures import FixtureToolPort
+
+        c = Conversation(port=FixtureToolPort(), llm=PlaceholderLLM())
+        c.ask("If I move FO C-2087 onto DX412, does anyone breach a duty limit?")
+        c.ask("yes")
+        assert "FO C-2087" not in c.history[-1].query
+        assert "Captain C-2087" in c.history[-1].query
+
+    def test_declining_names_the_real_rank(self):
+        from agent.tools_fixtures import FixtureToolPort
+
+        c = Conversation(port=FixtureToolPort(), llm=PlaceholderLLM())
+        c.ask("If I move FO C-2087 onto DX412, does anyone breach a duty limit?")
+        assert "C-2087 is the Captain" in c.ask("no").narrative

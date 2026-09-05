@@ -95,7 +95,14 @@ class RuleVerdict:
 
     @property
     def failed(self) -> bool:
-        return self.status is Verdict.FAIL
+        """Compare by value, not identity.
+
+        Verdicts cross the tool boundary as JSON, so `status` arrives as the
+        string "FAIL" rather than the enum member. `is` returns False for
+        that, which reported a breaching assignment as legal — the single
+        most dangerous way this system can be wrong.
+        """
+        return str(self.status) == str(Verdict.FAIL)
 
 
 @dataclass(slots=True)
@@ -193,6 +200,12 @@ class ReplacementAnswer:
     near_misses: list[Option] = field(default_factory=list)
     excluded: list[dict[str, Any]] = field(default_factory=list)
 
+    # A direct legality question — "if C-2087 covers P-2291, does anything
+    # breach?" — answers with verdicts rather than candidates.
+    subject: str | None = None
+    legal: bool | None = None
+    verdicts: list[RuleVerdict] = field(default_factory=list)
+
 
 @dataclass(slots=True)
 class ConsequenceAnswer:
@@ -219,6 +232,17 @@ class AdvisorResponse:
     confidence: Confidence = Confidence.HIGH
     unknowns: list[str] = field(default_factory=list)
     trace: list[TraceEntry] = field(default_factory=list)
+
+    awaiting: str | None = None
+    """Set when this answer is a question back to the controller.
+
+    `"confirmation"` — an id or rank needs confirming before anything runs.
+    `"detail"`       — something is missing, e.g. which date.
+
+    A client renders these as a prompt expecting a reply, not as a finding.
+    Without it the only signal was the prefix on a trace error, which is not
+    something a UI should have to parse.
+    """
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)

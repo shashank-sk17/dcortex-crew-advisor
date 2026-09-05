@@ -85,9 +85,54 @@ class CoreToolPort(PostgresToolPort):
 
     # -- legality ---------------------------------------------------------
 
-    def check_legality(self, crew_id: str, pairing_id: str,
+    def resolve_flight(self, flight_id: str | None = None,
+                       flight_no: str | None = None,
+                       date: str | None = None) -> str:
+        """A flight id from whatever the controller named.
+
+        A bare flight number is ambiguous: DX412 operates on three separate
+        days in this week alone, each on a different pairing. Picking one
+        silently would answer a question nobody asked, so an undated flight
+        number comes back as a request for the date.
+        """
+        if flight_id:
+            self.require("flight", flight_id)
+            return flight_id
+        if not flight_no:
+            raise ToolError("UNRESOLVED_ENTITY", "no flight was named")
+
+        rows = self.lookup("flights", {"flight_no": flight_no})
+        if not rows:
+            raise ToolError("UNRESOLVED_ENTITY", f"there is no flight {flight_no}")
+
+        if date:
+            match = [r for r in rows if str(r["date"]) == str(date)]
+            if not match:
+                flew = ", ".join(sorted(str(r["date"]) for r in rows))
+                raise ToolError(
+                    "UNRESOLVED_ENTITY",
+                    f"{flight_no} does not operate on {date}. It flies on {flew}.")
+            return match[0]["flight_id"]
+
+        if len(rows) == 1:
+            return rows[0]["flight_id"]
+
+        flew = ", ".join(sorted(str(r["date"]) for r in rows))
+        raise ToolError(
+            "AMBIGUOUS_QUERY",
+            f"{flight_no} operates on {flew}. Which date do you mean? "
+            f"Each is a different pairing, so the answer differs.")
+
+    def check_legality(self, crew_id: str, pairing_id: str | None = None,
+                       flight_id: str | None = None, flight_no: str | None = None,
+                       date: str | None = None,
                        delay_h: float = 0.0) -> dict[str, Any]:
         self.require("crew", crew_id)
+        if not pairing_id:
+            # "Move C-2087 onto DX412" names a leg. Crew fly whole pairings,
+            # so the leg has to be resolved to the trip it belongs to.
+            pairing_id = self.pairing_for_flight(
+                self.resolve_flight(flight_id, flight_no, date))
         self.require("pairing", pairing_id)
         c = assess(self.world, crew_id, pairing_id, delay_h)
         return {

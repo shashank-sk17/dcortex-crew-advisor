@@ -141,6 +141,21 @@ def render_replacement(answer: ReplacementAnswer) -> str:
     """
     lines: list[str] = []
 
+    if answer.verdicts:
+        subject = answer.subject or "That assignment"
+        blocking = [v for v in answer.verdicts if v.failed]
+        if blocking:
+            lines.append(f"▸ {subject} would breach "
+                         f"{len(blocking)} rule{'s' if len(blocking) > 1 else ''}:")
+            lines += [f"  {render_verdict(v)}" for v in blocking]
+        else:
+            lines.append(f"▸ {subject} is legal — all "
+                         f"{len(answer.verdicts)} rules pass.")
+            lines += [f"  {render_verdict(v)}" for v in answer.verdicts]
+        if not answer.options:
+            return "\n".join(lines)
+        lines.append("")
+
     if rec := answer.recommended:
         head = f"▸ {rec.action} — {_inr(rec.cost_inr)}"
         if rec.delay_hours:
@@ -258,7 +273,8 @@ def has_content(answer: Any) -> bool:
         case LookupAnswer() as a:
             return bool(a.rows)
         case ReplacementAnswer() as a:
-            return bool(a.options or a.near_misses or a.uncovered_flights or a.funnel)
+            return bool(a.options or a.near_misses or a.uncovered_flights
+                        or a.funnel or a.verdicts)
         case ConsequenceAnswer() as a:
             return bool(a.options or a.blast_radius or a.world_diff or a.joint_plan)
     return False
@@ -279,7 +295,8 @@ def render_unavailable(response: AdvisorResponse) -> str:
     # verbatim rather than burying it under a header about missing tools.
     about_the_query = [e for e in failed
                        if e.error.startswith(("NEEDS_CONFIRMATION",
-                                              "UNRESOLVED_ENTITY"))]
+                                              "UNRESOLVED_ENTITY",
+                                              "AMBIGUOUS_QUERY"))]
     if about_the_query:
         seen: list[str] = []
         for entry in about_the_query:

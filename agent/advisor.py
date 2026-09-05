@@ -18,6 +18,7 @@ from dataclasses import fields as dataclass_fields
 from typing import Any, Iterator
 
 from agent import config, explainer, verifier
+from agent.entities import stated_ranks
 from agent.llm import LLM, StreamEvent, ToolCall, default_llm
 from agent.prompts import system_prompt
 from agent.router import Route, route
@@ -31,8 +32,10 @@ from agent.schemas import (
     LookupAnswer,
     Option,
     ReplacementAnswer,
+    RuleVerdict,
     Tier,
     TraceEntry,
+    Verdict,
 )
 from agent.tools import TOOL_SCHEMAS, PlaceholderToolPort, ToolPort, dispatch, schemas_for_port
 
@@ -43,6 +46,11 @@ class AdvisorConfig:
     verify: bool = True
     polish: bool = True
     max_verify_retries: int = 1
+
+
+# A tool can end a turn by asking the controller something. These are not
+# failures to route around — they are questions only a human can settle.
+CLARIFYING = ("AMBIGUOUS_QUERY", "NEEDS_CONFIRMATION")
 
 
 @dataclass(slots=True)
@@ -57,6 +65,7 @@ class Turn:
     notes: list[str] = field(default_factory=list)
     seen_calls: set[str] = field(default_factory=set)
     repeats: int = 0
+    awaiting_controller: bool = False
 
 
 # --------------------------------------------------------------------------
@@ -287,7 +296,12 @@ def _coerce(cls: Any, rows: Any) -> list[Any]:
         if isinstance(row, cls):
             out.append(row)
         elif isinstance(row, dict):
-            out.append(cls(**{k: v for k, v in row.items() if k in fields}))
+            kwargs = {k: v for k, v in row.items() if k in fields}
+            if cls is RuleVerdict and "status" in kwargs:
+                # JSON gives us the string; rebuild the enum so identity
+                # comparisons elsewhere cannot silently misread it.
+                kwargs["status"] = Verdict(str(kwargs["status"]))
+            out.append(cls(**kwargs))
     return out
 
 
@@ -321,8 +335,15 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
     if route.tier is Tier.REPLACEMENT:
         found = results.get("find_options") or {}
         rippled = results.get("ripple") or {}
+        # A legality verdict is a complete answer on its own. Reading only
+        # find_options and ripple discarded it silently, so "does any rule
+        # breach?" computed the right verdict and then reported nothing.
+        checked = results.get("check_legality") or {}
         rec = _coerce(Option, [found["recommended"]]) if found.get("recommended") else []
         return ReplacementAnswer(
+            subject=checked.get("crew_id"),
+            legal=checked.get("legal"),
+            verdicts=_coerce(RuleVerdict, checked.get("verdicts")),
             recommended=rec[0] if rec else None,
             cancellation_multiple=found.get("cancellation_multiple", 0),
             next_tier_cost_inr=found.get("next_tier_cost_inr", 0),
@@ -397,6 +418,15 @@ class Advisor:
             turn.trace.append(entry)
             if entry.error:
                 turn.notes.append(f"{entry.tool}: {entry.error}")
+                if entry.error.startswith(CLARIFYING):
+                    # "DX412 operates on three dates — which do you mean?" is a
+                    # question for the controller. Left to continue, the model
+                    # answered it itself: it checked all three dates and then
+                    # narrated whichever it preferred, so the same question
+                    # produced different answers on different runs. Choosing
+                    # among them is the desk's call, not ours.
+                    turn.awaiting_controller = True
+                    return
 
     def _tool_loop(self, turn: Turn) -> None:
         """Seed from entities, then let the model request more until it stops."""
@@ -404,8 +434,12 @@ class Advisor:
 
         if seeds := seed_calls(turn.route):
             self._run_tools(seeds, turn)
+            if turn.awaiting_controller:
+                return
             if followups := followup_calls(turn.route, turn.trace):
                 self._run_tools(followups, turn)
+            if turn.awaiting_controller:
+                return
 
         tools = tools_for(turn.route.intent, self.port)
         messages: list[dict[str, Any]] = [{"role": "user", "content": turn.query}]
@@ -422,6 +456,8 @@ class Advisor:
                 break
             before = len(turn.trace)
             self._run_tools(response.tool_calls, turn)
+            if turn.awaiting_controller:
+                return
             if len(turn.trace) == before:
                 # Every requested call was a repeat: the model is looping and
                 # has no new evidence to gather. Stop rather than burn the cap.
@@ -453,6 +489,10 @@ class Advisor:
         unknowns = [n for n in turn.notes]
         errored = any(e.error for e in turn.trace)
 
+        if turn.awaiting_controller:
+            # A question for the controller is a complete, confident answer.
+            return Confidence.HIGH, []
+
         if not turn.trace:
             return Confidence.LOW, unknowns + ["no tool produced any data"]
         if errored:
@@ -461,12 +501,44 @@ class Advisor:
             return Confidence.MEDIUM, unknowns
         return Confidence.HIGH, unknowns
 
+    def rank_mismatch(self, query: str) -> str | None:
+        """A rank the query asserts that the roster contradicts.
+
+        dCortex's own problem statement says "FO C-2087" and their dataset
+        README flags it as an erratum — C-2087 is a Captain. A controller
+        typing that has either misremembered the seat or means a different
+        person, and both change the answer. Accepting it silently is the
+        failure; the roster knows, so it should say.
+        """
+        for crew_id, claimed in stated_ranks(query):
+            try:
+                rows = self.port.lookup("crew", {"crew_id": crew_id})
+            except Exception:
+                continue
+            if not rows:
+                continue
+            actual = rows[0].get("rank")
+            if actual and actual != claimed:
+                return (f"{crew_id} is a {actual}, not a {claimed}. "
+                        f"Did you mean a different crew member, or shall I "
+                        f"proceed with {crew_id} as {actual}?")
+        return None
+
     def ask(self, query: str, llm: LLM | None = None) -> AdvisorResponse:
         """Route, gather evidence, verify, explain."""
         turn = Turn(query=query)
         turn.route = route(query, llm or self.llm)
 
-        self._tool_loop(turn)
+        # Before anything runs: does the query assert something about a person
+        # that the roster contradicts? Answering the wrong seat confidently is
+        # worse than asking.
+        if mismatch := self.rank_mismatch(query):
+            turn.trace.append(TraceEntry(
+                tool="roster_check", args={"query": query},
+                error=f"NEEDS_CONFIRMATION: {mismatch}"))
+            turn.awaiting_controller = True
+        else:
+            self._tool_loop(turn)
 
         confidence, unknowns = self._confidence(turn)
         response = AdvisorResponse(
@@ -478,6 +550,16 @@ class Advisor:
             unknowns=unknowns,
             trace=turn.trace,
         )
+
+        if turn.awaiting_controller:
+            asked = next(e for e in turn.trace
+                         if e.error and e.error.startswith(CLARIFYING))
+            code, _, detail = asked.error.partition(":")
+            response.narrative = detail.strip()
+            response.awaiting = ("confirmation" if code == "NEEDS_CONFIRMATION"
+                                 else "detail")
+            response.confidence = Confidence.HIGH
+            return response
 
         if not turn.trace:
             # Nothing ran at all. Say why rather than returning silence.
