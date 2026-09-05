@@ -149,6 +149,13 @@ def seed_calls(route: Route) -> list[ToolCall]:
                 pairing_id=ents.primary_pairing,
                 role=ents.roles[0] if ents.roles else "Captain")
 
+        case (Intent.FIND_REPLACEMENT | Intent.RANK_OPTIONS) if ents.primary_crew:
+            # "C-1042 is sick" names a person, not a trip. The roster knows
+            # which pairing they are on and in what role; asking the model to
+            # supply either is asking it to guess.
+            add("find_options", crew_id=ents.primary_crew)
+            add("ripple", event={"type": "SICK_CREW", "crew_id": ents.primary_crew})
+
         case (Intent.FIND_REPLACEMENT | Intent.RANK_OPTIONS) if ents.stations:
             # A disruption named by route rather than pairing — "captain of
             # BLR->BOM is out". Identify the leg first; the pairing it belongs
@@ -440,12 +447,17 @@ class Advisor:
                 # on screen is the verified one; it is the model's discarded
                 # draft that was unsupported, and a bare "UNVERIFIED" makes the
                 # good answer look like the suspect one.
-                bad = ", ".join(c.value for c in result.unsupported)
-                response.unknowns.append(
-                    f"The model's draft claimed {bad}, which no tool output "
-                    f"supports. That draft was discarded — what is shown above "
-                    f"is rendered directly from the tool results."
-                )
+                if bad := ", ".join(c.value for c in result.unsupported):
+                    response.unknowns.append(
+                        f"The model's draft claimed {bad}, which no tool output "
+                        f"supports. That draft was discarded — what is shown "
+                        f"above is rendered directly from the tool results."
+                    )
+                else:
+                    # No unsupported claims means the draft failed for another
+                    # reason — almost always that no tool ran at all. Saying
+                    # "claimed , which no tool supports" is worse than useless.
+                    response.unknowns.append(result.summary())
 
         response.narrative = narrative
         response.citations = explainer.collect_citations(response)

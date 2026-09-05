@@ -19,6 +19,7 @@ from agent.tools import ToolError
 from agent.tools_postgres import PostgresToolPort
 from core import rules
 from core.engine import Candidate, World, assess, drop_stage, load_world
+from core.resolve import Resolution, resolve
 
 FUNNEL_ORDER = ("considered", "qualified", "certified", "in position",
                 "available", "within limits", "legal")
@@ -37,10 +38,57 @@ class CoreToolPort(PostgresToolPort):
             self._world = load_world(self)
         return self._world
 
+    # -- entity resolution -------------------------------------------------
+
+    def _universe(self, kind: str) -> tuple[dict[str, Any], Any]:
+        """The valid id space for one kind, and how to describe a member.
+
+        The label matters as much as the id: "C-1024" alone is not something a
+        controller can confirm against, but "C-1024 (First Officer, DEL)" is.
+        """
+        w = self.world
+        if kind == "crew":
+            return w.crew, lambda c: f"{c.rank}, {c.base}, {'/'.join(c.ratings)}"
+        if kind == "pairing":
+            return (
+                w.pairing_days,
+                lambda days: (f"{len(days)} day{'s' if len(days) > 1 else ''} from "
+                              f"{days[0].date}, {days[0].dep_station}"),
+            )
+        if kind == "flight":
+            flights = {f["flight_id"]: f
+                       for legs in w.pairing_flights.values() for f in legs}
+            return (flights,
+                    lambda f: f"{f['dep_station']}->{f['arr_station']} {f['date']}")
+        raise ToolError("INTERNAL", f"no id universe for {kind!r}")
+
+    def require(self, kind: str, value: str | None) -> str:
+        """Confirm an id is real, or raise something a controller can act on.
+
+        Never substitutes a near match. `C-1042` and `C-1024` differ by one
+        transposed digit; in this dataset one is a captain and the other is
+        nobody. Silently correcting would dispatch a different human being to
+        an aircraft — so a near match is returned as a question, not an answer.
+        """
+        if not value:
+            raise ToolError("UNRESOLVED_ENTITY", f"a {kind} id is required")
+
+        universe, label = self._universe(kind)
+        result = resolve(kind, value, universe, label)
+        if result.exists:
+            return value
+
+        raise ToolError(
+            "NEEDS_CONFIRMATION" if result.needs_confirmation else "UNRESOLVED_ENTITY",
+            result.message(),
+        )
+
     # -- legality ---------------------------------------------------------
 
     def check_legality(self, crew_id: str, pairing_id: str,
                        delay_h: float = 0.0) -> dict[str, Any]:
+        self.require("crew", crew_id)
+        self.require("pairing", pairing_id)
         c = assess(self.world, crew_id, pairing_id, delay_h)
         return {
             "crew_id": crew_id,
@@ -56,14 +104,37 @@ class CoreToolPort(PostgresToolPort):
 
     # -- candidate search -------------------------------------------------
 
-    def find_options(self, role: str, pairing_id: str | None = None,
-                     flight_id: str | None = None,
+    def assignment_for_crew(self, crew_id: str) -> tuple[str, str]:
+        """Which pairing a crew member is on, and in what role.
+
+        "C-1042 is sick" names a person, not a trip. The roster knows both the
+        pairing and the role, so neither has to be guessed — and the role
+        matters: replacing a captain with a first officer is not cover.
+        """
+        self.require("crew", crew_id)
+        for pairing_id, members in self.world.pairing_crew.items():
+            for member, role in members:
+                if member == crew_id:
+                    return pairing_id, role
+        raise ToolError("UNRESOLVED_ENTITY",
+                        f"{crew_id} is not rostered on any pairing this week")
+
+    def find_options(self, role: str | None = None, pairing_id: str | None = None,
+                     flight_id: str | None = None, crew_id: str | None = None,
                      callout_utc: str | None = None) -> dict[str, Any]:
+        if not pairing_id and crew_id:
+            pairing_id, rostered_role = self.assignment_for_crew(crew_id)
+            role = role or rostered_role
         if not pairing_id and flight_id:
             pairing_id = self.pairing_for_flight(flight_id)
+        if pairing_id:
+            self.require("pairing", pairing_id)
         if not pairing_id:
             raise ToolError("UNRESOLVED_ENTITY",
-                            "find_options needs a pairing_id or a flight_id")
+                            "find_options needs a pairing_id, flight_id or crew_id")
+        if not role:
+            raise ToolError("UNRESOLVED_ENTITY",
+                            "find_options needs a role, or a crew_id to infer it from")
 
         world = self.world
         days = world.duty_days(pairing_id)
@@ -162,7 +233,10 @@ class CoreToolPort(PostgresToolPort):
 
     def ripple(self, event: dict[str, Any]) -> dict[str, Any]:
         pairing_id = event.get("pairing_id")
+        if pairing_id:
+            self.require("pairing", pairing_id)
         if not pairing_id and (cid := event.get("crew_id")):
+            self.require("crew", cid)
             pairing_id = next(
                 (p for p, members in self.world.pairing_crew.items()
                  if any(c == cid for c, _ in members)), None)

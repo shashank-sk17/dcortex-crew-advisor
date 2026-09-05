@@ -521,3 +521,51 @@ class TestRecommendationLeads:
         a = self._answer()
         a.equal_cost_alternatives = 3
         assert "not a uniquely correct choice" in explainer.render_replacement(a)
+
+
+class TestCrewNamedWithoutAPairing:
+    """"C-1042 is sick" names a person, not a trip.
+
+    It routed correctly and then did nothing: seeding needed a pairing, and
+    the model was not going to guess one. The roster knows both the pairing
+    and the role, so neither should be guessed by anyone.
+    """
+
+    def test_a_bare_crew_id_seeds_a_search(self):
+        calls = seed_calls(route("C-1042 is sick"))
+        assert calls, "named a crew member and seeded nothing"
+        assert calls[0].name == "find_options"
+        assert calls[0].args == {"crew_id": "C-1042"}
+
+    def test_it_also_asks_what_breaks(self):
+        names = {c.name for c in seed_calls(route("C-1042 is sick"))}
+        assert "ripple" in names
+
+    def test_role_comes_from_the_roster_not_a_default(self):
+        """Replacing a captain with a first officer is not cover."""
+        from agent.tools_fixtures import FixtureToolPort
+
+        port = FixtureToolPort()
+        assert port.assignment_for_crew("C-1042") == ("P-2291", "Captain")
+
+    def test_unrostered_crew_refuses_rather_than_defaulting(self):
+        from agent.tools import ToolError
+        from agent.tools_fixtures import FixtureToolPort
+
+        with pytest.raises(ToolError):
+            FixtureToolPort().assignment_for_crew("C-9999")
+
+    def test_a_named_pairing_still_wins(self):
+        call = seed_calls(route("Who can cover P-2291 as Captain?"))[0]
+        assert call.args["pairing_id"] == "P-2291"
+
+
+class TestRejectedDraftMessage:
+    def test_no_unsupported_claims_gives_a_useful_reason(self):
+        """"The model's draft claimed , which no tool output supports" is
+        worse than useless — the draft failed because no tool ran."""
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        llm = PlaceholderLLM([LLMResponse(text="Something unsourced.")] * 4)
+        r = Advisor(llm=llm).ask("Who can cover P-9999?")
+        assert all("claimed ," not in n for n in r.unknowns)

@@ -112,13 +112,22 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                         "by flight. The pairing is resolved for you."
                     ),
                 },
+                "crew_id": {
+                    "type": "string", "pattern": "^C-[0-9]{4}$",
+                    "description": (
+                        "The crew member who is unavailable. Their pairing AND "
+                        "role are resolved from the roster, so neither has to "
+                        "be supplied or guessed."
+                    ),
+                },
                 "role": {
                     "type": "string",
                     "enum": ["Captain", "First Officer", "Senior Cabin Crew", "Cabin Crew"],
+                    "description": "Inferred from crew_id when that is given.",
                 },
                 "callout_utc": {"type": "string", "description": "ISO-8601 UTC"},
             },
-            "required": ["role"],
+            "required": [],
         },
     },
     {

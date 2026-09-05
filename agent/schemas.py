@@ -244,6 +244,7 @@ class AdvisorError:
 
 ERROR_CODES = (
     "UNRESOLVED_ENTITY",
+    "NEEDS_CONFIRMATION",   # a near match was found; ask before acting
     "AMBIGUOUS_QUERY",
     "NO_LEGAL_OPTION",
     "OUT_OF_SCOPE",
