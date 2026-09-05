@@ -88,6 +88,7 @@ class Entities:
     times: list[str] = field(default_factory=list)
     roles: list[str] = field(default_factory=list)
     cert_types: list[str] = field(default_factory=list)
+    horizon_days: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         # `slots=True` means there is no __dict__ to iterate.
@@ -160,6 +161,35 @@ def extract_dates(text: str) -> list[str]:
     return _dedupe(found)
 
 
+_HORIZON_RE = re.compile(
+    r"\b(?:with)?in\s+(?:the\s+)?(?:next\s+)?(\d{1,3})\s*(day|week|month)s?\b"
+    r"|\bnext\s+(\d{1,3})\s*(day|week|month)s?\b",
+    re.I,
+)
+
+_HORIZON_UNIT_DAYS = {"day": 1, "week": 7, "month": 30}
+
+
+def extract_horizon(text: str) -> int | None:
+    """A forward-looking window in days — "within 30 days", "next 2 weeks".
+
+    Questions about expiry are intervals, not points: Q04 asks for
+    certifications expiring *within 30 days of* a date, and the answer key is
+    an explicit `valid_to between 2026-09-15 and 2026-10-15`. Without the
+    number the window is a guess, and guessing the window silently changes
+    which crew appear on a compliance list.
+
+    A month is taken as 30 days. That is what "within a month" means to a
+    controller reading a roster, and it keeps the arithmetic checkable.
+    """
+    match = _HORIZON_RE.search(text)
+    if not match:
+        return None
+    count, unit = (match.group(1), match.group(2)) if match.group(1) else (
+        match.group(3), match.group(4))
+    return int(count) * _HORIZON_UNIT_DAYS[unit.lower()]
+
+
 def extract_times(text: str) -> list[str]:
     """Return HH:MM strings. The dataset is entirely UTC, so no zone handling."""
     out = []
@@ -214,6 +244,7 @@ def extract(text: str) -> Entities:
         times=extract_times(text),
         roles=roles,
         cert_types=_dedupe(certs),
+        horizon_days=extract_horizon(text),
     )
 
 

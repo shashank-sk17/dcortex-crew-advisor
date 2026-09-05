@@ -157,3 +157,23 @@ class TestVocabularyMatchesDataset:
     def test_cert_types(self):
         certs = self._load("certifications")
         assert {c["cert_type"] for c in certs} == set(config.CERT_TYPES)
+
+
+class TestHorizon:
+    """"Within 30 days" is a number the answer depends on, so it is read from
+    the question rather than assumed."""
+
+    @pytest.mark.parametrize("text, days", [
+        ("List all certifications expiring within 30 days of 2026-09-15.", 30),
+        ("List crew whose licence expires in the next 30 days.", 30),
+        ("anything lapsing in 2 weeks?", 14),
+        ("certs expiring within a month", None),      # no number, no guess
+        ("who is on reserve at BLR on 15 Sep?", None),
+    ])
+    def test_reads_the_stated_window(self, text, days):
+        assert extract(text).horizon_days == days
+
+    def test_a_bare_day_is_not_mistaken_for_a_horizon(self):
+        """"the 15th" resolves as a date; it must not also become 15 days."""
+        e = extract("who is on reserve on the 15th?")
+        assert e.dates == ["2026-09-15"] and e.horizon_days is None

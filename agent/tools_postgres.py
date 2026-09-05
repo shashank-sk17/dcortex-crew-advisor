@@ -23,7 +23,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from agent.tools import ToolError, resolve_filters
+from agent.tools import RANGE_OPS, ToolError, resolve_filters
 
 try:
     import psycopg
@@ -151,7 +151,14 @@ class PostgresToolPort:
         arrays = self._array_columns(table)
         where, params = [], []
         for key, value in resolve_filters(entity, filters, known).items():
-            if key in arrays:
+            if isinstance(value, dict):
+                # A range. `resolve_filters` has already rejected any operator
+                # outside RANGE_OPS, so this cannot interpolate arbitrary text
+                # into the statement.
+                for op, bound in value.items():
+                    where.append(f'"{key}" {RANGE_OPS[op]} %s')
+                    params.append(bound)
+            elif key in arrays:
                 # "is 2026-09-15 in this reserve's dates?" is containment.
                 where.append(f'"{key}" @> %s')
                 params.append(list(value) if isinstance(value, (list, tuple)) else [value])

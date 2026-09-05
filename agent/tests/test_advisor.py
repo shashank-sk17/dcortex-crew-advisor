@@ -776,3 +776,75 @@ class TestClarifyingQuestionsReachTheController:
             "If C-2087 covers P-2291, does any rule breach?")
         assert "needs the rules engine" in r.narrative
         assert r.confidence is Confidence.LOW, "a capability gap read as confident"
+
+
+class TestCertificationWindow:
+    """Q04 — the compliance listing. Tier 1 is the mandatory tier, and this is
+    the question that used to route correctly and then run nothing."""
+
+    def _expected(self):
+        import json
+        from pathlib import Path
+
+        path = Path("crew-ops-advisor-dataset/data/questions.json")
+        if not path.exists():
+            pytest.skip("dataset not vendored")
+        questions = json.loads(path.read_text())
+        return [q for q in questions if q["question_id"] == "Q04"][0]
+
+    def test_seed_builds_the_interval_the_answer_key_describes(self):
+        """The key says: valid_to between 2026-09-15 and 2026-10-15."""
+        calls = seed_calls(route(self._expected()["prompt"]))
+        assert [c.name for c in calls] == ["lookup"]
+        assert calls[0].args["filters"] == {
+            "valid_to": {"gte": "2026-09-15", "lte": "2026-10-15"}
+        }
+
+    def test_matches_the_answer_key_exactly(self):
+        question = self._expected()
+        rows = Advisor(port=PlaceholderToolPort(), llm=PlaceholderLLM()).ask(
+            question["prompt"])
+        returned = {
+            (r["crew_id"], r["cert_type"], str(r["valid_to"]))
+            for entry in rows.trace if entry.tool == "lookup"
+            for r in entry.result
+        }
+        assert returned == {
+            (r["crew_id"], r["cert_type"], r["valid_to"])
+            for r in question["expected_answer"]
+        }
+
+    def test_no_horizon_means_no_invented_window(self):
+        """A window nobody asked for silently changes who is on the list."""
+        calls = seed_calls(route("What certifications does C-1042 hold?"))
+        assert calls[0].args["filters"] == {"crew_id": "C-1042"}
+
+
+class TestFilterRanges:
+    def test_unknown_operator_is_rejected_not_ignored(self):
+        """A dropped bound widens the result set with nothing to notice it by."""
+        from agent.tools import ToolError, resolve_filters
+
+        with pytest.raises(ToolError, match="unknown filter operator"):
+            resolve_filters("certifications", {"valid_to": {"before": "2026-10-15"}},
+                            {"valid_to"})
+
+    def test_bounds_are_inclusive_both_ends(self):
+        from agent.tools import row_matches
+
+        want = {"gte": "2026-09-15", "lte": "2026-10-15"}
+        assert row_matches({"valid_to": "2026-09-15"}, "valid_to", want)
+        assert row_matches({"valid_to": "2026-10-15"}, "valid_to", want)
+        assert not row_matches({"valid_to": "2026-10-16"}, "valid_to", want)
+
+    def test_a_missing_column_does_not_satisfy_a_range(self):
+        from agent.tools import row_matches
+
+        assert not row_matches({}, "valid_to", {"lte": "2026-10-15"})
+
+    def test_list_valued_columns_are_containment(self):
+        """`ratings` holds a list; asking for A320 means "holds an A320 rating",
+        which equality answered as no-one. Postgres already did containment."""
+        from agent.tools import row_matches
+
+        assert row_matches({"ratings": ["A320", "ATR72"]}, "ratings", "A320")

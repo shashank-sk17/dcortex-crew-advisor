@@ -48,8 +48,11 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "filters": {
                     "type": "object",
                     "description": (
-                        "Field equality filters, e.g. {'base': 'BLR', "
-                        "'rank': 'Captain'}. Dates are ISO-8601."
+                        "Field filters, e.g. {'base': 'BLR', 'rank': 'Captain'}. "
+                        "Dates are ISO-8601. A value may instead be a range, "
+                        "e.g. {'valid_to': {'gte': '2026-09-15', "
+                        "'lte': '2026-10-15'}} for 'expiring within 30 days of "
+                        "15 Sep'. Operators: gte, lte, gt, lt."
                     ),
                 },
             },
@@ -246,6 +249,14 @@ FIELD_ALIASES: dict[str, str] = {
 }
 
 
+# Range operators, mapped to the SQL they mean. Equality stays the default —
+# these exist because some tier-1 questions are genuinely intervals ("expiring
+# within 30 days of 15 Sep" is `valid_to` between two dates) and answering one
+# by pulling every row and letting the model filter would put the selection
+# back above the trust boundary, which is the one thing we do not do.
+RANGE_OPS: dict[str, str] = {"gte": ">=", "lte": "<=", "gt": ">", "lt": "<"}
+
+
 def resolve_filters(
     entity: str, filters: dict[str, Any] | None, known: frozenset[str] | set[str]
 ) -> dict[str, Any]:
@@ -253,21 +264,82 @@ def resolve_filters(
 
     `known` comes from the live backend, so JSON and Postgres each get their
     own column set rather than sharing one hardcoded list.
+
+    A value may be a scalar (equality), a list (membership), or a dict of
+    `RANGE_OPS` (an interval). An unknown operator is rejected here rather
+    than silently ignored — a dropped bound would quietly widen the result
+    set, and the caller would have no way to tell.
     """
     resolved: dict[str, Any] = {}
     for key, value in (filters or {}).items():
         if key in known:
-            resolved[key] = value
-            continue
-        alias = FIELD_ALIASES.get(key.lower().replace(" ", "_"))
-        if alias and alias in known:
-            resolved[alias] = value
-            continue
-        raise ToolError(
-            "UNRESOLVED_ENTITY",
-            f"{entity} has no field {key!r}. Valid fields: {', '.join(sorted(known))}",
-        )
+            column = key
+        else:
+            alias = FIELD_ALIASES.get(key.lower().replace(" ", "_"))
+            if not (alias and alias in known):
+                raise ToolError(
+                    "UNRESOLVED_ENTITY",
+                    f"{entity} has no field {key!r}. "
+                    f"Valid fields: {', '.join(sorted(known))}",
+                )
+            column = alias
+
+        if isinstance(value, dict):
+            bad = sorted(set(value) - set(RANGE_OPS))
+            if bad:
+                raise ToolError(
+                    "UNRESOLVED_ENTITY",
+                    f"unknown filter operator{'s' if len(bad) > 1 else ''} "
+                    f"{', '.join(repr(b) for b in bad)} on {column!r}. "
+                    f"Valid operators: {', '.join(sorted(RANGE_OPS))}",
+                )
+        resolved[column] = value
     return resolved
+
+
+def _comparable(value: Any) -> Any:
+    """Coerce a value so a row and a filter bound can be ordered together.
+
+    ISO-8601 dates sort correctly as strings, which is why the range filters
+    work at all on the JSON backend. But a row read from Postgres arrives as
+    `datetime.date` while the bound is still the model's string, and `date <
+    str` raises. Comparing both as text is exact for ISO dates and harmless
+    for everything else that reaches here.
+    """
+    return value if isinstance(value, (int, float)) else str(value)
+
+
+def row_matches(row: dict[str, Any], column: str, want: Any) -> bool:
+    """Whether one row satisfies one resolved filter. In-memory backends only.
+
+    Postgres builds the equivalent predicate in SQL instead — see
+    `PostgresToolPort.lookup`. The two must agree, and `test_tools.py` asserts
+    the semantics both implement.
+    """
+    have = row.get(column)
+    if isinstance(want, dict):
+        if have is None:
+            return False
+        for op, bound in want.items():
+            left, right = _comparable(have), _comparable(bound)
+            if op == "gte" and not left >= right:
+                return False
+            if op == "lte" and not left <= right:
+                return False
+            if op == "gt" and not left > right:
+                return False
+            if op == "lt" and not left < right:
+                return False
+        return True
+    if isinstance(want, (list, tuple)):
+        # A list means membership, except against a list-valued column
+        # (`ratings`, `dates`), where it means containment.
+        if isinstance(have, (list, tuple)):
+            return all(w in have for w in want)
+        return have in want
+    if isinstance(have, (list, tuple)):
+        return want in have
+    return have == want
 
 
 def schemas_for_port(port: Any) -> list[dict[str, Any]]:
@@ -403,7 +475,7 @@ class PlaceholderToolPort:
     def lookup(self, entity: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         rows = self._rows(entity)
         for key, want in resolve_filters(entity, filters, self.entity_fields(entity)).items():
-            rows = [r for r in rows if r.get(key) == want]
+            rows = [r for r in rows if row_matches(r, key, want)]
         return rows
 
     def explain_rule(self, rule_id: str) -> dict[str, Any]:

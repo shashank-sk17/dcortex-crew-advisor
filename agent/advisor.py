@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from dataclasses import fields as dataclass_fields
+from datetime import date, timedelta
 from typing import Any, Iterator
 
 from agent import config, explainer, verifier
@@ -165,6 +166,32 @@ def _flight_filters(ents: Any) -> dict[str, Any]:
     return filters
 
 
+def _cert_filters(ents: Any) -> dict[str, Any]:
+    """Build a certification filter, turning "within 30 days" into an interval.
+
+    An expiry question is an interval, not a point — Q04's own answer key says
+    `valid_to between 2026-09-15 and 2026-10-15`. Computing that window here
+    keeps the selection below the trust boundary; the alternative is handing
+    the model 600 rows and asking it to pick the six, which is precisely the
+    arithmetic it must never do.
+
+    With no stated horizon no window is invented: the query is answered as
+    whatever it literally asked for, and a controller who wanted a window can
+    say so. The anchor, when a horizon is given without a date, is the first
+    day of the dataset's operating week — the only "today" this world has.
+    """
+    filters: dict[str, Any] = {}
+    if ents.primary_crew:
+        filters["crew_id"] = ents.primary_crew
+    if ents.cert_types:
+        filters["cert_type"] = ents.cert_types[0]
+    if ents.horizon_days:
+        start = date.fromisoformat(ents.primary_date or config.WEEK_START)
+        end = start + timedelta(days=ents.horizon_days)
+        filters["valid_to"] = {"gte": start.isoformat(), "lte": end.isoformat()}
+    return filters
+
+
 def seed_calls(route: Route) -> list[ToolCall]:
     """First tool calls implied by the entities, before the model is consulted.
 
@@ -192,6 +219,9 @@ def seed_calls(route: Route) -> list[ToolCall]:
 
         case Intent.LOOKUP_FLIGHT:
             add("lookup", entity="flights", filters=_flight_filters(ents))
+
+        case Intent.LOOKUP_CERT:
+            add("lookup", entity="certifications", filters=_cert_filters(ents))
 
         case Intent.CHECK_LEGALITY if ents.primary_crew and ents.primary_pairing:
             add("check_legality",
