@@ -4,6 +4,7 @@ import { ConversationStore } from '../../services/conversation.store';
 import { ConversationComponent } from '../../components/conversation.component';
 import { ChatComposerComponent } from '../../components/chat-composer.component';
 import { EvidenceRailComponent } from '../../components/evidence-rail.component';
+import { IconComponent } from '../../components/icon.component';
 
 /**
  * Floating advisor — a bubble that expands into the streamed reasoning + answer
@@ -13,7 +14,7 @@ import { EvidenceRailComponent } from '../../components/evidence-rail.component'
 @Component({
   selector: 'app-chat-bubble',
   standalone: true,
-  imports: [ConversationComponent, ChatComposerComponent, EvidenceRailComponent],
+  imports: [IconComponent, ConversationComponent, ChatComposerComponent, EvidenceRailComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './chat-bubble.component.html',
   styleUrl: './chat-bubble.component.scss',

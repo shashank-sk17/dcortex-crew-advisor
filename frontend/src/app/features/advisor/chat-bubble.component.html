@@ -8,7 +8,7 @@
         <button class="ghost reset-btn" type="button" [disabled]="store.busy()" (click)="store.reset()"
                 title="Clear this conversation — also resets the advisor's own memory of it">New chat</button>
       }
-      <button class="ghost" (click)="bus.toggle()">–</button>
+      <button class="ghost icon-btn" type="button" aria-label="Collapse advisor" (click)="bus.toggle()"><app-icon name="collapse" /></button>
     </header>
     <div class="panel__body">
       <div class="panel__chat">
@@ -20,7 +20,7 @@
   </div>
 } @else {
   <button class="fab" (click)="bus.toggle()">
-    💬 Ask the advisor
+    <app-icon name="advisor" /> Ask the advisor
     @if (store.busy()) { <span class="fab__dot"></span> }
   </button>
 }

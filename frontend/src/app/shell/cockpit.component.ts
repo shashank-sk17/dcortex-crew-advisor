@@ -5,6 +5,7 @@ import { AppState } from '../core/app-state';
 import { SidebarComponent } from '../features/sidebar/sidebar.component';
 import { AlertsPanelComponent } from '../features/alerts/alerts-panel.component';
 import { ChatBubbleComponent } from '../features/advisor/chat-bubble.component';
+import { IconComponent } from '../components/icon.component';
 
 /**
  * Root cockpit frame — topbar (nav + working-date picker + MOCK/LIVE badge),
@@ -17,7 +18,7 @@ import { ChatBubbleComponent } from '../features/advisor/chat-bubble.component';
 @Component({
   selector: 'app-cockpit',
   standalone: true,
-  imports: [
+  imports: [IconComponent, 
     RouterOutlet, RouterLink, RouterLinkActive,
     SidebarComponent, AlertsPanelComponent, ChatBubbleComponent,
   ],

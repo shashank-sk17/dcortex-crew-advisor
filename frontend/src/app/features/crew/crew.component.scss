@@ -12,23 +12,34 @@ select, input {
   border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 12px;
 }
 
-.tbl { border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
-.tr {
-  display: grid; grid-template-columns: 20px minmax(160px, 1fr) 130px 56px 140px 60px; gap: 8px;
-  align-items: center; width: 100%; min-width: 600px; text-align: left; padding: 9px 10px;
-  background: var(--surface-1); border: none; border-bottom: 1px solid var(--line);
-  color: var(--fg-1); font-size: 13.5px;
+.tbl {
+  border: var(--rule-w) solid var(--hairline); border-radius: var(--radius);
+  overflow-x: auto; background: var(--ground-1); box-shadow: var(--shadow-card);
 }
-.tr.th { background: var(--surface-2); color: var(--fg-3); text-transform: uppercase; font-size: 11px; }
-.tr:hover:not(.th) { background: var(--surface-2); }
-.tr.sel { background: var(--accent-bg); }
-.tr.att { box-shadow: inset 3px 0 0 var(--warn); }
+.tr {
+  display: grid; grid-template-columns: 66px minmax(160px, 1fr) 130px 56px 140px 60px; gap: 10px;
+  align-items: center; width: 100%; min-width: 640px; text-align: left; padding: 11px 12px;
+  background: var(--ground-1); border: none; border-bottom: var(--rule-w) solid var(--hairline);
+  color: var(--ink-1); font-size: 14px;
+}
+.tr:last-child { border-bottom: 0; }
+.tr.th {
+  background: transparent; color: var(--ink-2); text-transform: uppercase;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+  padding-top: 8px; padding-bottom: 8px; border-bottom-color: var(--hairline-strong);
+}
+.tr:hover:not(.th) { background: var(--ground-2); }
+.tr.sel { background: var(--ref-bg); }
+/* attention is a fill plus the word in the first column — not a coloured edge,
+   and not a dot a colour-blind controller has to take on faith */
+.tr.att:not(.sel) { background: var(--near-bg); }
 
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--fg-3); }
-.dot.on { background: var(--warn); }
-
-/* crew cell: keep the id and the name visually separated */
-.tr .mono + .sm { margin-left: 10px; }
+/* crew cell: the id carries, the name follows at reading weight */
+.tr__id {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 15px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink);
+}
+.tr .tr__id + .sm { margin-left: 10px; }
 
 .sm { font-size: 12.5px; }
 .lg { font-size: 17px; }
@@ -71,8 +82,10 @@ select, input {
 .vr[data-s="PASS"] { color: var(--fg-1); }
 
 .ask {
-  display: block; width: 100%; margin-top: 6px; font-size: 13.5px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; margin-top: 6px; font-size: 13.5px; font-weight: 700;
   letter-spacing: 0.02em; text-align: center; padding: 10px 12px; border-radius: var(--radius-sm);
   border: 1px solid var(--accent-line); background: var(--accent); color: #fff;
 }
+.ask app-icon { font-size: 16px; }
 .ask:hover { background: color-mix(in oklab, var(--accent) 88%, black); }

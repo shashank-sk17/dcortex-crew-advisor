@@ -51,9 +51,12 @@ export interface FlightRow {
   aircraft_type: string;
   seats: number;
   pairing_id: string | null;
-  status: FlightStatus;
-  delay_rank: DelayRank;
-  delay_rank_score: number;
+  /** Null until the backend computes it — api/flight_routes.py returns
+   * `flight_delay_rank = None` today, so the board renders "—" and skips the
+   * row tint rather than claiming a rank nobody calculated. */
+  status: FlightStatus | null;
+  delay_rank: DelayRank | null;
+  delay_rank_score: number | null;
   delay_rank_reasons: string[];
   slack_minutes: number | null;
   downstream_count: number;

@@ -2,7 +2,7 @@
   <div class="card__title">Ranked options</div>
   @for (o of options; track o.action) {
     <div class="opt" [class.opt--top]="o.rank === 1 && o.legal" [class.opt--illegal]="!o.legal">
-      <div class="opt__rank">{{ o.legal ? o.rank : '✗' }}</div>
+      <div class="opt__rank">{{ o.legal ? o.rank : '—' }}</div>
       <div class="opt__body">
         <div class="opt__head">
           <strong>{{ o.action }}</strong>
@@ -23,11 +23,11 @@
             }
           </div>
         }
-        @if (o.unlock) { <div class="opt__unlock">🔓 {{ o.unlock }}</div> }
+        @if (o.unlock) { <div class="opt__unlock"><app-icon name="override" /> {{ o.unlock }}</div> }
         @if (o.reasoning) { <p class="opt__why">{{ o.reasoning }}</p> }
         @if (o.legal && o.crew_id) {
           @if (decidedCrewId === o.crew_id) {
-            <span class="chip chip--pass opt__accepted">✓ accepted</span>
+            <span class="chip chip--pass opt__accepted"><app-icon name="check" /> accepted</span>
           } @else if (!decidedCrewId) {
             <button type="button" class="opt__accept" [disabled]="deciding" (click)="accept.emit(o)">
               {{ deciding ? '…' : 'Accept this option' }}
@@ -47,7 +47,7 @@
           <div class="opt__head"><strong>{{ o.action }}</strong><span class="chip chip--warn">near-miss</span></div>
           <div class="opt__meta"><span class="cost mono">₹{{ o.cost_inr | number }}</span>
             @if (o.delay_hours) { <span class="chip chip--warn">+{{ o.delay_hours }}h</span> }</div>
-          @if (o.unlock) { <div class="opt__unlock">🔓 {{ o.unlock }}</div> }
+          @if (o.unlock) { <div class="opt__unlock"><app-icon name="override" /> {{ o.unlock }}</div> }
           @if (o.reasoning) { <p class="opt__why">{{ o.reasoning }}</p> }
         </div>
       </div>

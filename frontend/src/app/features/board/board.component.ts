@@ -7,6 +7,7 @@ import { AppState } from '../../core/app-state';
 import { AdvisorBus } from '../advisor/advisor-bus';
 import { CandidateResult, DelayRank, DownstreamLeg, FlightDetail, FlightRow } from '../../core/api.types';
 import { ModalComponent } from '../../components/modal.component';
+import { IconComponent } from '../../components/icon.component';
 
 /**
  * Main display — the day's flights ranked and colour-coded by disruption risk
@@ -17,7 +18,7 @@ import { ModalComponent } from '../../components/modal.component';
 @Component({
   selector: 'app-board',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, ModalComponent],
+  imports: [IconComponent, DatePipe, DecimalPipe, ModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './board.component.html',
   styleUrl: './board.component.scss',

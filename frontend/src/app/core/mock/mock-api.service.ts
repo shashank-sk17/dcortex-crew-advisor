@@ -56,7 +56,7 @@ export class MockApiService implements ApiPort {
     if (q.aircraft) rows = rows.filter((r) => r.aircraft === q.aircraft);
     if (q.status) rows = rows.filter((r) => r.status === q.status);
     if (q.delay_rank) rows = rows.filter((r) => r.delay_rank === q.delay_rank);
-    rows.sort((a, b) => b.delay_rank_score - a.delay_rank_score || a.dep_utc.localeCompare(b.dep_utc));
+    rows.sort((a, b) => (b.delay_rank_score ?? 0) - (a.delay_rank_score ?? 0) || a.dep_utc.localeCompare(b.dep_utc));
     return this.ok(rows);
   }
 

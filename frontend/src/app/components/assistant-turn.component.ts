@@ -12,6 +12,7 @@ import { OptionsCardComponent } from './options-card.component';
 import { RuleTraceComponent } from './rule-trace.component';
 import { TracePanelComponent } from './trace-panel.component';
 import { AbstainCardComponent } from './abstain-card.component';
+import { IconComponent } from './icon.component';
 
 const TIER_LABEL: Record<number, string> = {
   1: 'Lookup',
@@ -27,7 +28,7 @@ const TIER_LABEL: Record<number, string> = {
 @Component({
   selector: 'app-assistant-turn',
   standalone: true,
-  imports: [
+  imports: [IconComponent, 
     DecimalPipe, Tier1TableComponent, ImpactCardComponent, OptionsCardComponent,
     RuleTraceComponent, TracePanelComponent, AbstainCardComponent,
   ],

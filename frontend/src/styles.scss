@@ -118,14 +118,73 @@ input, textarea, select { font: inherit; color: var(--ink); }
 .chip--warn { background: var(--near-bg); border-color: var(--near-line); color: var(--near); }
 .chip--muted { color: var(--ink-2); }
 
+/* Icons ride at the optical size of the text they sit in, never larger than the
+   cap height of their label — an icon that outweighs its word reads as clip art. */
+.chip app-icon { font-size: 13px; }
+.token app-icon { font-size: 12px; }
+
+/* icon-only control — square, centred, with a real hit area */
+.icon-btn {
+  display: inline-grid; place-items: center;
+  width: 28px; height: 28px; padding: 0; font-size: 16px;
+  border-radius: var(--radius-sm);
+}
+
 .mono, .mono-sm { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .mono-sm { font-size: 13px; color: var(--ink-1); }
 .muted { color: var(--ink-2); }
 
-/* the "one thing gets attention" primitive — a headline stat */
-.focus-stat { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1; }
-.focus-stat--warn { color: var(--near); }
-.focus-stat--fail { color: var(--breach); }
+/* ── readout — the instrument strip that replaces the dashboard hero block ───
+   Equal-weight figures in the cockpit face, each with its label inline beneath,
+   divided by hairlines. No single number is inflated over its neighbours: on
+   this desk the relationship between the figures is the information. */
+.readout {
+  display: flex; align-items: stretch;
+  background: var(--ground-1);
+  border: var(--rule-w) solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.readout__cell {
+  flex: 1; min-width: 0; padding: 11px 12px;
+  display: flex; flex-direction: column; gap: 3px;
+  color: inherit; text-decoration: none;
+}
+.readout__cell + .readout__cell { border-left: var(--rule-w) solid var(--hairline); }
+a.readout__cell:hover { background: var(--ground-2); }
+.readout__fig {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 21px; font-weight: 700; line-height: 1; letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.readout__fig--warn { color: var(--near); }
+.readout__fig--fail { color: var(--breach); }
+.readout__fig--ok   { color: var(--legal); }
+.readout__lab {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── status token — the legend as a word, not a dot ─────────────────────────
+   Status is carried by the token's own text plus its colour, so it survives
+   greyscale and a colour-blind reader; the row it sits on tints to match. */
+.token {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-2);
+}
+.token[data-legend="critical"], .token[data-legend="breach"] { color: var(--breach); }
+.token[data-legend="high"],     .token[data-legend="near"]   { color: var(--near); }
+.token[data-legend="medium"],   .token[data-legend="ref"]    { color: var(--ref); }
+.token[data-legend="low"],      .token[data-legend="legal"]  { color: var(--legal); }
+
+/* Row tint by legend — a fill, never a coloured edge. */
+[data-legend="critical"].tint, [data-legend="breach"].tint { background: var(--breach-bg); }
+[data-legend="high"].tint,     [data-legend="near"].tint   { background: var(--near-bg); }
+[data-legend="medium"].tint,   [data-legend="ref"].tint    { background: var(--ref-bg); }
+[data-legend="low"].tint,      [data-legend="legal"].tint  { background: var(--legal-bg); }
 
 /* ── accordion — collapsed by default, one open at a time within a group ───── */
 .accordion__item + .accordion__item { border-top: var(--rule-w) solid var(--hairline); }
