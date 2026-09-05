@@ -39,15 +39,23 @@ STATIC = Path(__file__).resolve().parent / "static"
 PORT = 8420
 
 # Backends, chosen by env var so the same console drives every combination:
-#   AGENT_LLM   placeholder (default) | ollama
+#   AGENT_LLM   placeholder (default) | ollama | groq
 #   AGENT_DATA  json (default)        | postgres
 LLM_KIND = os.environ.get("AGENT_LLM", "placeholder").lower()
 DATA_KIND = os.environ.get("AGENT_DATA", "json").lower()
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:8b")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3.6-27b")
 
 
 def make_llm() -> tuple[Any, str]:
     """Return the configured client and a label for the status bar."""
+    if LLM_KIND == "groq":
+        from agent.llm_groq import GroqLLM
+
+        client = GroqLLM(GROQ_MODEL)
+        if not client.available():
+            return PlaceholderLLM(), "groq unreachable (key or model?) — using placeholder"
+        return client, f"groq {GROQ_MODEL}"
     if LLM_KIND == "ollama":
         from agent.llm_ollama import OllamaLLM
 
@@ -201,9 +209,10 @@ def run_pipeline(query: str) -> dict[str, Any]:  # noqa: C901
             {
                 "key": "explainer",
                 "name": "Explainer",
-                "status": _stage_status(bool(response.narrative), LLM_KIND != "ollama"),
+                "status": _stage_status(bool(response.narrative),
+                                        LLM_KIND not in ("ollama", "groq")),
                 "summary": (
-                    "model-polished" if LLM_KIND == "ollama"
+                    "model-polished" if LLM_KIND in ("ollama", "groq")
                     else "template renderer (no model configured)"
                 ),
                 "detail": {"narrative": response.narrative},
@@ -243,7 +252,7 @@ def build_state() -> dict[str, Any]:
         tools.append({"name": name, "live": live})
 
     return {
-        "llm": {"live": LLM_KIND == "ollama" and "unreachable" not in llm_label,
+        "llm": {"live": LLM_KIND in ("ollama", "groq") and "unreachable" not in llm_label,
                 "model": llm_label},
         "data": {"live": "postgres" in port_label, "source": port_label},
         "tools": tools,

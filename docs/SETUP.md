@@ -142,7 +142,33 @@ set AGENT_DATA=core && set AGENT_LLM=ollama && python -m devui.server
 | `AGENT_LLM` | |
 |---|---|
 | `placeholder` *(default)* | No model. Answers come from templates — terse but correct. |
-| `ollama` | Local model. Needs step 5. |
+| **`groq`** | **Hosted, fastest. Needs a key — see below.** |
+| `ollama` | Local model. Needs step 5, and a 5 GB download. |
+
+### Groq (recommended)
+
+Ask Shashank for the key and add it to the same `.env`:
+
+```
+GROQ_API_KEY=gsk_...
+```
+
+Then:
+
+```bash
+AGENT_DATA=core AGENT_LLM=groq python -m devui.server           # macOS/Linux
+```
+```powershell
+$env:AGENT_DATA="core"; $env:AGENT_LLM="groq"; python -m devui.server
+```
+
+Model is `qwen/qwen3.6-27b`; override with `GROQ_MODEL`. Sub-second when it is
+not rate limited.
+
+**The free tier allows 7,000 input tokens per minute**, and one tier-2 question
+runs about 2,400, so roughly three questions a minute. The client retries
+automatically using the delay Groq reports, which is why an occasional answer
+takes twenty seconds instead of one. That is the wait, not the thinking.
 
 The status bar at the top of the console always names which is live, so you
 never have to guess what produced an answer.
@@ -151,7 +177,7 @@ never have to guess what produced an answer.
 
 ## 5. The local model *(optional)*
 
-Only needed for `AGENT_LLM=ollama`. Everything works without it — the
+Only needed for `AGENT_LLM=ollama`. Skip this if you are using Groq. Everything works without it — the
 templates produce correct answers, just plainer ones.
 
 **macOS**

@@ -151,8 +151,9 @@ environment variable.
 | `core/` rules engine | **Real.** All seven rules, verified against dCortex's answer keys. |
 | `agent/` router, verifier, explainer | **Real.** |
 | Postgres reads | **Real.** Read-only connections; a write raises at the server. |
-| Local model | **Real** via Ollama, unreliable at arguments — see §8. |
-| Hosted model client | **Placeholder.** `AnthropicLLM` raises `NotImplementedError` (issue #24). |
+| Hosted model | **Real** via Groq (`qwen/qwen3.6-27b`), 5/5 on tool calls. |
+| Local model | **Real** via Ollama, slower and weaker at arguments — see §8. |
+| Anthropic client | **Placeholder.** `AnthropicLLM` raises `NotImplementedError` (issue #24). |
 | `api/` production API | **Not started** (issue #32). `devui/` is a dev tool. |
 
 ### Proof, not assertion
