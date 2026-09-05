@@ -489,7 +489,7 @@ python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\Ac
 pip install -r requirements.txt
 
 python crew-ops-advisor-dataset/validate.py          # prints PASS
-pytest -q                                            # 326 passing
+pytest -q                                            # 334 passing
 ```
 
 Then put the database URL in `.env` (ask Shashank — it is not in the repo) and

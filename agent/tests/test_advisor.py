@@ -991,3 +991,85 @@ class TestLookupTable:
         out = explainer.render(response)
         assert "DX412-2026-09-15" in out
         assert verify(out, response.trace).ok
+
+
+class TestDataCoverage:
+    """Fields the dataset provides and the advisor was quietly ignoring."""
+
+    def test_options_name_the_person_not_just_the_id(self):
+        """A controller phones a human being at 05:00."""
+        port = PlaceholderToolPort()
+        crew = port.lookup("crew", {"crew_id": "C-3310"})[0]
+        assert crew["name"] == "D. Reddy"
+        from agent.schemas import Option
+
+        option = Option(action=f"Assign Captain {crew['name']} (C-3310)",
+                        crew_id="C-3310", legal=True, name=crew["name"])
+        assert crew["name"] in option.action
+
+    def test_reserves_carry_rank_and_name(self):
+        """Q01's answer key gives a rank for every reserve, and reserve_pool
+        holds only an id and a window."""
+        rows = PlaceholderToolPort().lookup("reserves", {"base": "BLR"})
+        by_id = {r["crew_id"]: r for r in rows}
+        assert by_id["C-3305"]["rank"] == "Captain"
+        assert by_id["C-3305"]["name"]
+        assert len(rows) == 12, "Q01 expects all twelve BLR reserves"
+
+    def test_risk_signals_are_reachable(self):
+        """Q16 asks for the score and its drivers. It used to run no tool."""
+        r = route("What is the disruption-risk score for C-1042 and what drives it?")
+        assert r.intent is Intent.LOOKUP_RISK
+        rows = PlaceholderToolPort().lookup("risk_signals", {"crew_id": "C-1042"})
+        assert rows[0]["disruption_risk_score"] == 0.78
+        assert rows[0]["drivers"]
+
+    def test_risk_never_reorders_options(self):
+        """dCortex provides these and says teams do not model them. A risk
+        score is not a rule; letting one move a legal option up the ranking
+        would be the prediction we were told not to build."""
+        import inspect
+
+        from core import port as core_port
+
+        source = inspect.getsource(core_port.CoreToolPort.find_options)
+        ranking = [ln for ln in source.splitlines() if ".sort(" in ln]
+        assert ranking and not any("risk" in ln for ln in ranking)
+
+    def test_pairing_crew_is_an_entity_on_both_backends(self):
+        """Postgres normalises it into a table and the JSON nests it. A seed
+        call must not have to know which backend is live."""
+        rows = PlaceholderToolPort().lookup("pairing_crew", {"pairing_id": "P-2291"})
+        assert {r["role"] for r in rows} >= {"Captain", "First Officer"}
+        assert len(rows) == 6
+
+    def test_plural_ranks_are_recognised(self):
+        """"Which Captains are based at BLR" matched no role at all, so the
+        filter was dropped and the answer was every crew member at BLR."""
+        from agent.entities import extract
+
+        assert extract("Which Captains are based at BLR?").roles == ["Captain"]
+        assert extract("list the first officers").roles == ["First Officer"]
+
+    def test_counting_flights_is_not_a_crew_question(self):
+        """"how many" alone routed to crew and answered with all 150 of them.
+        A confident wrong table is worse than an empty one."""
+        assert route("How many flights operate on 2026-09-16 in total?").intent \
+            is Intent.LOOKUP_FLIGHT
+        assert route("How many captains are based at DEL?").intent is Intent.LOOKUP_CREW
+
+    def test_one_table_per_row_shape(self):
+        """A roster lookup returning crew and duty days rendered six names
+        against two dates with nothing lining up."""
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, LookupAnswer, Tier, TraceEntry
+
+        rows = [{"crew_id": "C-1", "role": "Captain"}, {"date": "2026-09-15"}]
+        out = explainer.render(AdvisorResponse(
+            tier=Tier.LOOKUP, intent=Intent.LOOKUP_ROSTER,
+            answer=LookupAnswer(rows=rows),
+            trace=[TraceEntry(tool="lookup", result=rows)]))
+        rules = [ln for ln in out.splitlines() if set(ln.strip()) == {"─"} or
+                 (ln.strip() and set(ln.strip()) <= {"─", " "})]
+        assert len(rules) == 2, "shapes merged into one ragged table"
+        assert "crew_id  role" in out and "date" in out

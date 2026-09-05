@@ -41,8 +41,9 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "entity": {
                     "type": "string",
                     "enum": [
-                        "crew", "flights", "pairings", "reserves",
-                        "certifications", "risk_signals", "costs",
+                        "crew", "flights", "pairings", "pairing_crew",
+                        "pairing_days", "reserves", "certifications",
+                        "risk_signals", "duty_clocks", "costs",
                     ],
                 },
                 "filters": {
@@ -316,6 +317,25 @@ def resolve_filters(
     return resolved
 
 
+def with_crew_identity(rows: list[dict[str, Any]],
+                       crew: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Attach name and rank to rows keyed by crew_id.
+
+    `reserve_pool` holds a crew id and an on-call window and nothing about the
+    person, but Q01's answer key gives a rank for every reserve — and rightly:
+    "who is on reserve" is unanswerable if you cannot see whether they are a
+    Captain. The join belongs in the port, which is the layer whose job is to
+    present a domain entity rather than a table.
+    """
+    by_id = {c["crew_id"]: c for c in crew}
+    out = []
+    for row in rows:
+        who = by_id.get(row.get("crew_id"))
+        out.append({**row, "name": who.get("name"), "rank": who.get("rank")}
+                   if who else dict(row))
+    return out
+
+
 def _comparable(value: Any) -> Any:
     """Coerce a value so a row and a filter bound can be ordered together.
 
@@ -461,6 +481,10 @@ class PlaceholderToolPort:
         "crew": "crew", "flights": "flights", "reserves": "reserve_pool",
         "certifications": "certifications", "risk_signals": "risk_signals",
         "costs": "costs", "pairings": "rosters",
+        # Postgres normalises these into their own tables. Flattening them
+        # here keeps one entity set across both backends, which is the whole
+        # point of the port: a seed call must not have to know which is live.
+        "pairing_crew": "rosters", "pairing_days": "rosters",
     }
     ENTITIES = tuple(SOURCES)
 
@@ -471,6 +495,12 @@ class PlaceholderToolPort:
         rows = self._load(source)
         if entity == "pairings":
             rows = rows["pairings"]
+        elif entity == "pairing_crew":
+            return [{"pairing_id": p["pairing_id"], **c}
+                    for p in rows["pairings"] for c in p.get("crew", [])]
+        elif entity == "pairing_days":
+            return [{"pairing_id": p["pairing_id"], **d}
+                    for p in rows["pairings"] for d in p.get("days", [])]
         return [rows] if isinstance(rows, dict) else rows
 
     def entity_fields(self, entity: str) -> frozenset[str]:
@@ -496,6 +526,8 @@ class PlaceholderToolPort:
         rows = self._rows(entity)
         for key, want in resolve_filters(entity, filters, self.entity_fields(entity)).items():
             rows = [r for r in rows if row_matches(r, key, want)]
+        if entity == "reserves":
+            rows = with_crew_identity(rows, self._rows("crew"))
         return rows
 
     def notification_brief(self, crew_id: str, pairing_id: str) -> dict[str, Any]:

@@ -164,6 +164,20 @@ class CoreToolPort(PostgresToolPort):
         raise ToolError("UNRESOLVED_ENTITY",
                         f"{crew_id} is not rostered on any pairing this week")
 
+    def risk_scores(self) -> dict[str, float]:
+        """Pre-computed disruption risk, per crew member.
+
+        dCortex provides these and is explicit that teams do not model them:
+        "treat them like a weather forecast; your job is what the controller
+        does about it." So they ride alongside an option as information and
+        never enter the ranking — a risk score is not a rule, and letting one
+        reorder legal options would be exactly the prediction we were told
+        not to build.
+        """
+        return {r["crew_id"]: float(r["disruption_risk_score"])
+                for r in self.lookup("risk_signals")
+                if r.get("disruption_risk_score") is not None}
+
     def find_options(self, role: str | None = None, pairing_id: str | None = None,
                      flight_id: str | None = None, crew_id: str | None = None,
                      callout_utc: str | None = None) -> dict[str, Any]:
@@ -201,11 +215,19 @@ class CoreToolPort(PostgresToolPort):
         # Rank by cost then delay — the answer keys' own ordering.
         legal.sort(key=lambda c: (c.cost_inr, c.delay_hours, c.crew_id))
 
+        risk = self.risk_scores()
         options = []
         for i, c in enumerate(legal, start=1):
+            who = world.crew[c.crew_id]
             options.append({
-                "action": c.action(world.crew[c.crew_id].rank),
+                "action": c.action(who.rank, who.name),
                 "crew_id": c.crew_id, "legal": True,
+                "name": who.name, "seniority": who.seniority,
+                "base": who.base, "reachability_minutes": who.reachability_minutes,
+                # Provided input, treated like a weather forecast: reported
+                # beside the option, never allowed to change its legality or
+                # its rank. dCortex is explicit that teams do not model this.
+                "disruption_risk_score": risk.get(c.crew_id),
                 "rules_checked": list(rules.ALL_RULES),
                 "cost_inr": c.cost_inr, "delay_hours": c.delay_hours, "rank": i,
                 "cost_breakdown": c.cost_breakdown,

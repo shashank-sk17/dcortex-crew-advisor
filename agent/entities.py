@@ -50,10 +50,13 @@ MONTH_DAY_RE = re.compile(
 BARE_DAY_RE = re.compile(r"\bthe\s+(\d{1,2})(?:st|nd|rd|th)\b", re.I)
 
 ROLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("Senior Cabin Crew", re.compile(r"\b(senior cabin crew|scc|purser)\b", re.I)),
-    ("First Officer", re.compile(r"\b(first officer|f/?o|co-?pilot)\b", re.I)),
-    ("Captain", re.compile(r"\b(captain|cpt|capt|commander|skipper)\b", re.I)),
-    ("Cabin Crew", re.compile(r"\b(cabin crew|flight attendant|cc)\b", re.I)),
+    # Trailing `s?` on every alternative: "Which Captains are based at BLR"
+    # matched no role at all, so the filter was dropped and the answer was
+    # every one of the 111 crew at BLR.
+    ("Senior Cabin Crew", re.compile(r"\b(senior cabin crew|sccs?|pursers?)\b", re.I)),
+    ("First Officer", re.compile(r"\b(first officers?|f/?os?|co-?pilots?)\b", re.I)),
+    ("Captain", re.compile(r"\b(captains?|cpts?|capts?|commanders?|skippers?)\b", re.I)),
+    ("Cabin Crew", re.compile(r"\b(cabin crew|flight attendants?|cc)\b", re.I)),
 )
 
 CERT_RE = re.compile(

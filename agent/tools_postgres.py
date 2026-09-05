@@ -23,7 +23,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from agent.tools import RANGE_OPS, ToolError, resolve_filters
+from agent.tools import RANGE_OPS, ToolError, resolve_filters, with_crew_identity
 
 try:
     import psycopg
@@ -171,10 +171,14 @@ class PostgresToolPort:
 
         clause = (" where " + " and ".join(where)) if where else ""
         cols = ", ".join(f'"{c}"' for c in sorted(known) if c not in {"embedding", "search_tsv"})
-        return self._query(
+        rows = self._query(
             f'select {cols} from "{table}"{clause} order by "{order}" limit {MAX_ROWS}',
             tuple(params),
         )
+        if entity == "reserves":
+            rows = with_crew_identity(
+                rows, self._query("select crew_id, name, rank from crew"))
+        return rows
 
     def notification_brief(self, crew_id: str, pairing_id: str) -> dict[str, Any]:
         """Roster facts for a callout message.

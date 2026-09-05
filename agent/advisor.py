@@ -80,6 +80,7 @@ _INTENT_TOOLS: dict[Intent, tuple[str, ...]] = {
     Intent.LOOKUP_CREW: ("lookup",),
     Intent.LOOKUP_FLIGHT: ("lookup",),
     Intent.LOOKUP_CERT: ("lookup",),
+    Intent.LOOKUP_RISK: ("lookup",),
     Intent.DRAFT_NOTIFICATION: ("notification_brief", "lookup"),
     Intent.LOOKUP_DUTY_CLOCK: ("duty_clock",),
     Intent.EXPLAIN_RULE: ("explain_rule",),
@@ -168,6 +169,25 @@ def _flight_filters(ents: Any) -> dict[str, Any]:
     return filters
 
 
+def _crew_filters(ents: Any) -> dict[str, Any]:
+    """Narrow a crew listing by whatever the question actually pinned down.
+
+    An unfiltered `crew` lookup is 150 rows, which answers "who is available"
+    with the entire airline. Every filter here is something the controller
+    said out loud.
+    """
+    filters: dict[str, Any] = {}
+    if ents.primary_crew:
+        filters["crew_id"] = ents.primary_crew
+    if ents.roles:
+        filters["rank"] = ents.roles[0]
+    if ents.stations:
+        filters["base"] = ents.stations[0]
+    if ents.aircraft_types:
+        filters["ratings"] = ents.aircraft_types[0]
+    return filters
+
+
 def _cert_filters(ents: Any) -> dict[str, Any]:
     """Build a certification filter, turning "within 30 days" into an interval.
 
@@ -224,6 +244,20 @@ def seed_calls(route: Route) -> list[ToolCall]:
 
         case Intent.LOOKUP_CERT:
             add("lookup", entity="certifications", filters=_cert_filters(ents))
+
+        case Intent.LOOKUP_RISK:
+            add("lookup", entity="risk_signals",
+                filters={"crew_id": ents.primary_crew} if ents.primary_crew else {})
+
+        case Intent.LOOKUP_CREW:
+            add("lookup", entity="crew", filters=_crew_filters(ents))
+
+        case Intent.LOOKUP_ROSTER if ents.primary_pairing:
+            add("lookup", entity="pairing_crew",
+                filters={"pairing_id": ents.primary_pairing})
+
+        case Intent.LOOKUP_ROSTER if ents.primary_crew:
+            add("lookup", entity="pairing_crew", filters={"crew_id": ents.primary_crew})
 
         case Intent.DRAFT_NOTIFICATION if ents.primary_crew and ents.primary_pairing:
             add("notification_brief",

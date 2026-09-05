@@ -106,6 +106,9 @@ def render_option(option: Option, show_rank: bool = True) -> str:
     prefix = f"#{option.rank} " if show_rank and option.rank else ""
     parts = [f"{prefix}{option.action}", _inr(option.cost_inr)]
 
+    if option.reachability_minutes is not None:
+        parts.append(f"reachable in {option.reachability_minutes} min")
+
     if option.delay_hours:
         parts.append(f"{_hours(option.delay_hours)} delay")
     if option.blast_radius:
@@ -168,6 +171,35 @@ def render_lookup(answer: LookupAnswer) -> str:
 
     noun = "record" if answer.count == 1 else "records"
     shown = answer.rows[:ROW_LIMIT]
+
+    # Rows of different shapes are different questions, and interleaving them
+    # produces a table that is mostly blank cells — a roster lookup returning
+    # crew *and* duty days rendered six names against two dates with nothing
+    # lining up. Group by shape and give each its own table.
+    groups: list[list[dict[str, Any]]] = []
+    signatures: list[tuple[str, ...]] = []
+    for row in shown:
+        signature = tuple(sorted(row))
+        if signature in signatures:
+            groups[signatures.index(signature)].append(row)
+        else:
+            signatures.append(signature)
+            groups.append([row])
+
+    lines = [f"{answer.count} {noun}."]
+    for group in groups:
+        lines.extend(_table(group))
+    if answer.count > ROW_LIMIT:
+        # No number here on purpose. "and N more" is arithmetic the renderer
+        # did itself, and even a literal page size is a figure no tool
+        # produced — the verifier rejects both, correctly. The total above is
+        # sourced: it is the length of the tool's own result.
+        lines.append("  (list truncated)")
+    return "\n".join(lines)
+
+
+def _table(shown: list[dict[str, Any]]) -> list[str]:
+    """One aligned table for one set of same-shaped rows."""
     columns = _columns(shown)
 
     # A column holding one value across every row discriminates nothing here,
@@ -189,18 +221,10 @@ def render_lookup(answer: LookupAnswer) -> str:
         padded = [v.ljust(w) for v, w in zip(values, widths)]
         return "  " + "  ".join(padded).rstrip()
 
-    lines = [f"{answer.count} {noun}."]
-    lines += [f"  every row — {c}" for c in constant]
+    lines = [f"  every row — {c}" for c in constant]
     lines += ["", line(columns), "  " + "  ".join("─" * w for w in widths)]
     lines += [line(row) for row in cells]
-
-    if answer.count > ROW_LIMIT:
-        # No number here on purpose. "and N more" is arithmetic the renderer
-        # did itself, and even a literal page size is a figure no tool
-        # produced — the verifier rejects both, correctly. The total above is
-        # sourced: it is the length of the tool's own result.
-        lines.append("  (list truncated)")
-    return "\n".join(lines)
+    return lines
 
 
 def render_replacement(answer: ReplacementAnswer) -> str:

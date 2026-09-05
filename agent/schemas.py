@@ -28,6 +28,7 @@ class Intent(enum.StrEnum):
     LOOKUP_RESERVE = "LOOKUP_RESERVE"
     LOOKUP_DUTY_CLOCK = "LOOKUP_DUTY_CLOCK"
     LOOKUP_CERT = "LOOKUP_CERT"
+    LOOKUP_RISK = "LOOKUP_RISK"
     LOOKUP_FLIGHT = "LOOKUP_FLIGHT"
     LOOKUP_CREW = "LOOKUP_CREW"
     EXPLAIN_RULE = "EXPLAIN_RULE"
@@ -52,6 +53,7 @@ _INTENT_TIER: dict[Intent, Tier] = {
     Intent.LOOKUP_RESERVE: Tier.LOOKUP,
     Intent.LOOKUP_DUTY_CLOCK: Tier.LOOKUP,
     Intent.LOOKUP_CERT: Tier.LOOKUP,
+    Intent.LOOKUP_RISK: Tier.LOOKUP,
     Intent.LOOKUP_FLIGHT: Tier.LOOKUP,
     Intent.LOOKUP_CREW: Tier.LOOKUP,
     Intent.EXPLAIN_RULE: Tier.LOOKUP,
@@ -128,6 +130,14 @@ class Option:
     verdicts: list[RuleVerdict] = field(default_factory=list)
     unlock: str | None = None
     """Near-miss only: what would make this legal, e.g. 'departure slips 35 min'."""
+
+    # Who the candidate is. A controller acts on a person, not an id.
+    name: str = ""
+    seniority: int | None = None
+    base: str = ""
+    reachability_minutes: int | None = None
+    disruption_risk_score: float | None = None
+    """Provided input, reported beside the option and never used to rank it."""
 
     @property
     def is_near_miss(self) -> bool:
