@@ -30,3 +30,7 @@ scratch/
 # personal design tooling (not team-shared unless agreed)
 .claude/
 .impeccable/
+
+# presentation build output (exported decks, backup demo video)
+presentation/build/*
+!presentation/build/.gitkeep
