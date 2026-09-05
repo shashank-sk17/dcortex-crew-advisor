@@ -267,10 +267,17 @@ class TestLookupPolish:
         assert explainer.polish(resp, liar) == explainer.render(resp)
         assert llm_unused(liar)
 
-    def test_a_data_lookup_is_answered_in_prose_over_its_evidence(self):
+    def test_a_data_lookup_is_answered_in_prose_alone(self):
         """"Who is C-1042" fanned out to nine calls across seven entities and
         the template answered "16 records." followed by seven tables. Every
-        fact present, the question unanswered."""
+        fact present, the question unanswered.
+
+        The tables used to ride along underneath the prose as evidence, which
+        worked while the console rendered them as tables. It no longer does —
+        the chat shows the narrative and nothing else, where a fixed-width
+        table reflows into an unreadable run-on. The prose is now the whole
+        answer, so the instructions require it to carry the actual values.
+        """
         from agent import explainer
         from agent.llm import LLMResponse, PlaceholderLLM
 
@@ -278,9 +285,9 @@ class TestLookupPolish:
         resp = self._response(Intent.LOOKUP_CREW,
                               [{"crew_id": "C-1042", "name": "A. Nair"}])
         out = explainer.polish(resp, llm)
-        assert out.startswith("C-1042 is Captain A. Nair.")
-        assert "A. Nair" in out and llm.calls, "tables dropped, or model unused"
-        assert explainer.render(resp) in out, "evidence must survive beneath it"
+        assert out == "C-1042 is Captain A. Nair.", "prose is the whole answer"
+        assert llm.calls, "model unused"
+        assert "───" not in out, "no table may follow the prose"
 
     def test_the_question_reaches_the_model(self):
         """A lookup answer is only judgeable against what was asked."""

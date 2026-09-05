@@ -3,8 +3,12 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 
+import psycopg
+from dotenv import load_dotenv
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
+
+load_dotenv()
 
 _pool: ConnectionPool | None = None
 
@@ -14,6 +18,18 @@ def database_url() -> str:
     if not url:
         raise RuntimeError("DATABASE_URL is not set. Copy api/.env.example to api/.env.")
     return url
+
+
+def get_db_connection():
+    """A plain, unpooled connection with the default tuple row factory.
+
+    The Flask blueprints in `*_routes.py` predate the pool below and own their
+    connections directly -- `conn = get_db_connection()` ... `conn.close()`,
+    reading rows positionally (`row[0]`). They cannot go through `get_pool()`:
+    its `dict_row` factory would break every one of those index lookups.
+    Keep the two paths separate -- pool for `queries.py`, this for the routes.
+    """
+    return psycopg.connect(database_url())
 
 
 def get_pool() -> ConnectionPool:

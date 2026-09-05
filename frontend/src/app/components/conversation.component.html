@@ -5,11 +5,6 @@
       Ask in plain English. Every number, name and verdict comes from a deterministic
       tool call — the model only chooses tools and narrates.
     </p>
-    <div class="seeds">
-      @for (s of seeds; track s) {
-        <button class="seed" (click)="store.ask(s)">{{ s }}</button>
-      }
-    </div>
   </div>
 } @else {
   <div class="thread">

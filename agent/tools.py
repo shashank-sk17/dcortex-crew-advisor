@@ -157,6 +157,15 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                         "be supplied or guessed."
                     ),
                 },
+                "flight_no": {
+                    "type": "string", "pattern": "^DX[0-9]{3}$",
+                    "description": (
+                        "A flight named by number alone — 'a pilot for DX401'. "
+                        "Pass `date` with it where you have one: a number can "
+                        "fly on several days, and you will be asked which."
+                    ),
+                },
+                "date": {"type": "string", "description": "ISO date, with flight_no"},
                 "role": {
                     "type": "string",
                     "enum": ["Captain", "First Officer", "Senior Cabin Crew", "Cabin Crew"],
@@ -492,8 +501,14 @@ class ToolPort(Protocol):
     def lookup(self, entity: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
     def duty_clock(self, crew_id: str, date: str | None = None) -> dict[str, Any]: ...
     def notification_brief(self, crew_id: str, pairing_id: str) -> dict[str, Any]: ...
-    def check_legality(self, crew_id: str, pairing_id: str, delay_h: float = 0.0) -> dict[str, Any]: ...
-    def find_options(self, pairing_id: str, role: str, callout_utc: str | None = None) -> dict[str, Any]: ...
+    def check_legality(self, crew_id: str, pairing_id: str | None = None,
+                       flight_id: str | None = None, flight_no: str | None = None,
+                       date: str | None = None,
+                       delay_h: float = 0.0) -> dict[str, Any]: ...
+    def find_options(self, role: str | None = None, pairing_id: str | None = None,
+                     flight_id: str | None = None, crew_id: str | None = None,
+                     flight_no: str | None = None, date: str | None = None,
+                     callout_utc: str | None = None) -> dict[str, Any]: ...
     def ripple(self, event: dict[str, Any]) -> dict[str, Any]: ...
     def simulate(self, event: dict[str, Any]) -> dict[str, Any]: ...
     def joint_plan(self, events: list[dict[str, Any]]) -> dict[str, Any]: ...
@@ -626,10 +641,16 @@ class PlaceholderToolPort:
     def duty_clock(self, crew_id: str, date: str | None = None) -> dict[str, Any]:
         raise ToolError("INTERNAL", f"duty_clock: {self._NOT_YET}")
 
-    def check_legality(self, crew_id: str, pairing_id: str, delay_h: float = 0.0) -> dict[str, Any]:
+    def check_legality(self, crew_id: str, pairing_id: str | None = None,
+                       flight_id: str | None = None, flight_no: str | None = None,
+                       date: str | None = None,
+                       delay_h: float = 0.0) -> dict[str, Any]:
         raise ToolError("INTERNAL", f"check_legality: {self._NOT_YET}")
 
-    def find_options(self, pairing_id: str, role: str, callout_utc: str | None = None) -> dict[str, Any]:
+    def find_options(self, role: str | None = None, pairing_id: str | None = None,
+                     flight_id: str | None = None, crew_id: str | None = None,
+                     flight_no: str | None = None, date: str | None = None,
+                     callout_utc: str | None = None) -> dict[str, Any]:
         raise ToolError("INTERNAL", f"find_options: {self._NOT_YET}")
 
     def ripple(self, event: dict[str, Any]) -> dict[str, Any]:

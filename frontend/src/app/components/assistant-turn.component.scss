@@ -27,6 +27,12 @@
   border-radius: 6px; padding: 9px 11px; font-size: 13.5px;
 }
 
+/* A deliberate stop is not a failure — muted, not the error box's red. */
+.stopped {
+  border: 1px dashed var(--line); color: var(--fg-2);
+  border-radius: 6px; padding: 9px 11px; font-size: 13.5px;
+}
+
 /* modify — the fallback when none of the options-card's own suggestions fit */
 .turn__modify-link {
   font-size: 12.5px; font-weight: 600; color: var(--fg-2);

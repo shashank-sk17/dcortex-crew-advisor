@@ -58,7 +58,30 @@ WHAT_ABOUT_RE = re.compile(
     r"\bwhat about\b|\bhow about\b|\band\b\s+[Cc]-\d{4}|\bconsider\b", re.I)
 DECIDE_RE = re.compile(
     r"\b(go with|use|take|assign|book|call out|pick|choose|i'?ll take)\b", re.I)
-COST_RE = re.compile(r"\bwhat does (that|it) cost\b|\bhow much\b|\bcost of\b", re.I)
+COST_RE = re.compile(
+    r"\bwhat does (that|it) cost\b|\bhow much\b|\bcost of\b"
+    r"|\bwhat (will|would|does|did) .{0,40}\bcost\b|\bcost to\b", re.I)
+
+# A question is never an instruction, however many decision verbs it contains.
+#
+# "What will it cost to pick Das?" contains "pick", which is enough for
+# DECIDE_RE — so asking the price BOOKED the crew member and replied
+# "Recorded: … ₹9,500". Recording an assignment nobody made is the worst thing
+# this system can do quietly, so the decision path now requires an actual
+# instruction: "assign C-4809", not "should I assign C-4809?".
+QUESTION_RE = re.compile(
+    r"\?\s*$"
+    r"|^\s*(what|why|how|which|who|whom|whose|when|where|can|could|would|"
+    r"should|shall|is|are|was|were|does|do|did|will|may|might)\b",
+    re.I)
+
+# "Next cheapest option?", "anything cheaper?", "what else have I got?" — a
+# question about the ranking already on the table, not a new search. The turn
+# that produced the options costed every one of them, so this needs no tool.
+NEXT_OPTION_RE = re.compile(
+    r"\b(next|other|another|alternative|cheaper|cheapest|second|third|else)\b"
+    r".{0,30}\b(option|choice|crew|one|s)?\b|\bwhat else\b|\banything cheaper\b",
+    re.I)
 
 # Words that mean "the thing we were just talking about".
 ANAPHORA_RE = re.compile(
@@ -124,6 +147,16 @@ class Exchange:
         return None
 
 
+def _is_bare_id(query: str) -> str | None:
+    """True when the controller typed an id and essentially nothing else.
+
+    "C-3310" answers a "which one?"; "what does C-3310 cost" is a new question
+    that happens to name one, and must not be rewritten into the old query.
+    """
+    stripped = query.strip().strip(".?!,")
+    return CREW_RE.fullmatch(stripped) is not None
+
+
 def _name_of(record: Any, crew_id: str) -> str:
     """`Captain A. Nair (C-1042)` from an option or an exclusion row.
 
@@ -183,6 +216,54 @@ class Conversation:
             if row.get("crew_id") == crew_id:
                 return search, row, "excluded"
         return None
+
+    def candidate_ids(self) -> set[str]:
+        """Everyone the last search put on the table, offered or ruled out."""
+        search = self.last_search
+        if search is None:
+            return set()
+        ids = {cid for o in search.options
+               if (cid := getattr(o, "crew_id", None))}
+        ids |= {cid for r in search.excluded if (cid := r.get("crew_id"))}
+        return ids
+
+    def recommended_id(self) -> str | None:
+        """The candidate the last search actually put first."""
+        search = self.last_search
+        if search is None or not search.options:
+            return None
+        return getattr(search.options[0], "crew_id", None)
+
+    def candidates_named(self, name: str) -> list[str]:
+        """Candidates from the last search whose name matches `name`.
+
+        A controller answers with the surname we printed — we write "Captain
+        N. Sen (C-1526)", they type "why not Sen". The roster has six Sens and
+        only one of them is on the table, so the people already under
+        discussion have to be searched before the roster is.
+        """
+        wanted = name.strip().lower()
+        if not wanted:
+            return []
+        search = self.last_search
+        if search is None:
+            return []
+
+        found: list[str] = []
+        for record in list(search.options) + list(search.excluded):
+            get = record.get if isinstance(record, dict) else (
+                lambda k, d=None, _r=record: getattr(_r, k, d))
+            crew_id = get("crew_id")
+            full = (get("name") or "").lower()
+            if not crew_id or not full:
+                continue
+            # "Sen" must match "N. Sen" but not "Senan"; compare whole words,
+            # and accept the full string so "N. Sen" works too.
+            parts = [p.strip(".,") for p in full.split()]
+            if wanted == full or wanted in parts:
+                if crew_id not in found:
+                    found.append(crew_id)
+        return found
 
     # -- context carry-forward --------------------------------------------
 
@@ -246,6 +327,36 @@ class Conversation:
             text += (f", against ₹{top.cost_inr:,} for "
                      f"{_name_of(top, top.crew_id)}.")
         return self._from_prior(text, search)
+
+    def _answer_next_option(self) -> AdvisorResponse | None:
+        """The rest of the ranking, cheapest first.
+
+        The search that produced these already costed and rule-checked every
+        one, so "next cheapest option?" is a question about what is on the
+        table — answerable with no tool call and no new model reasoning.
+        """
+        search = self.last_search
+        if search is None or len(search.options) < 2:
+            return None
+
+        rest = sorted(search.options[1:],
+                      key=lambda o: (getattr(o, "cost_inr", 0) or 0))
+        lines = []
+        for option in rest[:4]:
+            crew_id = getattr(option, "crew_id", None)
+            if not crew_id:
+                continue
+            cost = getattr(option, "cost_inr", 0) or 0
+            delay = getattr(option, "delay_hours", 0) or 0
+            tail = f", {delay:g}h delay" if delay else ", no delay"
+            lines.append(f"{_name_of(option, crew_id)} — ₹{cost:,}{tail}")
+        if not lines:
+            return None
+
+        top = search.options[0]
+        head = (f"After {_name_of(top, top.crew_id)} at "
+                f"₹{getattr(top, 'cost_inr', 0) or 0:,}, cheapest first:")
+        return self._from_prior(head + "\n" + "\n".join(lines), search)
 
     def _answer_decision(self, crew_id: str) -> AdvisorResponse | None:
         """Record what the controller chose. The desk decides; we advise."""
@@ -322,6 +433,28 @@ class Conversation:
                     "Understood — not that one. Give me the correct id and I "
                     "will run it.", prior))
 
+        # 1b. Answering a "which one?" with the id.
+        #
+        #     `pending_confirmation` above only sees a NEEDS_CONFIRMATION entry
+        #     in the trace. The disambiguation raised by `_resolve_name` — the
+        #     "Reddy matches 3 crew, which one?" question — runs no tool and so
+        #     leaves no trace at all; it marks the response `awaiting` instead.
+        #     Without this branch the id was treated as a brand new question:
+        #     "what will it cost to choose Reddy?" / "C-3310" answered with a
+        #     dossier on C-3310 and dropped the cost question entirely.
+        if (prior is not None
+                and prior.response.awaiting == "confirmation"
+                and ents.crew_ids
+                and _is_bare_id(query)):
+            chosen = ents.crew_ids[0]
+            resumed = prior.query
+            for name in prior.entities.names:
+                resumed = re.sub(rf"\b{re.escape(name)}\b", chosen, resumed,
+                                 flags=re.I)
+            if resumed == prior.query:      # the name was not spelled that way
+                resumed = f"{prior.query} ({chosen})"
+            return self._record(resumed, self._advisor.ask(resumed), ents)
+
         # 2. Confirming a rank we queried — proceed with the roster's, and
         #    strip the wrong one so it cannot be picked up again.
         if prior is not None and (pending_rank := prior.pending_rank):
@@ -348,12 +481,52 @@ class Conversation:
         if prior is not None:
             target = ents.crew_ids[0] if ents.crew_ids else None
 
+            # "Next cheapest option?" names nobody — it asks about the ranking
+            # we just produced. Handled before name resolution, which used to
+            # read "Next" as a surname and answer "no crew called Next".
+            if (target is None and not ents.names
+                    and NEXT_OPTION_RE.search(query)):
+                if answer := self._answer_next_option():
+                    return self._record(query, answer, ents)
+
+            # "why not Sen?" is the same question as "why not C-1526?" — the
+            # controller is using the name we printed. Resolve it against the
+            # people this search actually put on the table before anything
+            # else: the roster has six Sens, and only one is under discussion.
+            # Unresolved, this fell through to a roster-wide name lookup and
+            # answered a follow-up about one candidate by listing five
+            # strangers from other bases.
+            if target is None and ents.names:
+                for name in ents.names:
+                    hits = self.candidates_named(name)
+                    if len(hits) == 1:
+                        target = hits[0]
+                        break
+                    # Three Reddys were considered, so the surname is ambiguous
+                    # across the pool — but we had just written "Take Captain
+                    # D. Reddy (C-3310)". A controller answering that with
+                    # "Reddy" means the one we named, not the two we ranked
+                    # below it. Only the recommendation gets this; between any
+                    # other pair we still ask.
+                    if (rec := self.recommended_id()) and rec in hits:
+                        target = rec
+                        break
+
             if target and (WHY_NOT_RE.search(query) or WHAT_ABOUT_RE.search(query)):
                 if answer := self._answer_about(target):
                     return self._record(query, answer)
 
-            if DECIDE_RE.search(query) and target:
+            if (DECIDE_RE.search(query) and target
+                    and not QUESTION_RE.search(query)
+                    and not COST_RE.search(query)):
                 if answer := self._answer_decision(target):
+                    return self._record(query, answer)
+
+            # Asking the price of a candidate is a question about them, which
+            # the previous turn already costed — not a new search, and above
+            # all not a booking.
+            if target and COST_RE.search(query):
+                if answer := self._answer_about(target):
                     return self._record(query, answer)
 
         # 5. A person named in words rather than by id. The system writes
@@ -404,9 +577,21 @@ class Conversation:
                 continue
 
             if prior is not None and len(matches) > 1:
-                known = set(prior.entities.crew_ids)
+                # Who is "in context" is both who the controller named and who
+                # we offered back. Narrowing on the query's ids alone missed
+                # every candidate from our own answer — the usual case, since
+                # a controller replies with a name we printed, not one they
+                # typed.
+                known = set(prior.entities.crew_ids) | self.candidate_ids()
                 if narrowed := [m for m in matches if m["crew_id"] in known]:
                     matches = narrowed
+                # Still several, and one of them is the candidate we just
+                # recommended by name: that is the one they mean. "What will it
+                # cost to choose Reddy?" straight after "Take Captain D. Reddy
+                # (C-3310)" is not an ambiguous question.
+                if len(matches) > 1 and (rec := self.recommended_id()):
+                    if pick := [m for m in matches if m["crew_id"] == rec]:
+                        matches = pick
             if ents.roles:
                 if narrowed := [m for m in matches if m["rank"] == ents.roles[0]]:
                     matches = narrowed

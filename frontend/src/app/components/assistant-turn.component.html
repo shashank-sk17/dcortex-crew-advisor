@@ -1,51 +1,25 @@
 <div class="turn">
-  @if (turn.query) { <p class="turn__asked"><span class="turn__asked-label">asked</span>{{ turn.query }}</p> }
-
   <div class="turn__gutter">
     <span class="turn__badge">advisor</span>
-    @if (tierLabel) { <span class="chip">{{ tierLabel }}</span> }
-    @if (turn.confidence) {
-      <span class="chip" [class.chip--pass]="turn.confidence === 'high'"
-            [class.chip--warn]="turn.confidence === 'medium'"
-            [class.chip--fail]="turn.confidence === 'low'">{{ turn.confidence }} confidence</span>
-    }
-    @if (turn.grounded === true) { <span class="chip chip--pass">✓ grounded</span> }
-    @if (turn.grounded === false) { <span class="chip chip--fail">⚠ ungrounded</span> }
     @if (turn.elapsedMs != null) { <span class="chip chip--muted mono">{{ turn.elapsedMs }}ms</span> }
   </div>
 
   @if (turn.status) { <div class="status"><span class="spinner"></span> {{ turn.status }}</div> }
   @if (turn.error) { <div class="error">{{ turn.error }}</div> }
-
-  @if (turn.abstain) {
-    <app-abstain-card [data]="turn.abstain" />
+  @if (turn.stopped) {
+    <div class="stopped">Stopped. Anything below is what had arrived — the answer is incomplete.</div>
   }
 
-  <!-- 0. AWAITING — a question, not a finding. Nothing else renders below this. -->
-  @if (awaiting) {
-    <div class="turn__awaiting">
-      <span class="chip chip--warn">awaiting your reply</span>
-      <p>{{ turn.narrative }}</p>
-    </div>
+  <!-- The answer, and nothing else. The options card, rule trace, evidence
+       rail and reasoning trail were removed deliberately: this reads as a
+       chat. Accept/Modify moved below so a recommendation is still actionable. -->
+  @if (turn.prose) {
+    <p class="prose">{{ turn.prose }}<span class="caret" [class.caret--on]="turn.streaming"></span></p>
   }
+  @if (turn.narrative && !turn.prose) { <p class="prose">{{ turn.narrative }}</p> }
 
-  <!-- 1. ANSWER -->
-  @if (!awaiting && lookup) { <app-tier1-table [data]="lookup" /> }
-  @if (!awaiting && replacement) {
-    @if ((replacement.uncovered_flights ?? []).length) { <app-impact-card [data]="replacement" /> }
-    @if ((replacement.options ?? []).length || (replacement.excluded ?? []).length) {
-      <app-options-card [options]="replacement.options ?? []" [nearMisses]="replacement.near_misses ?? []"
-                        [excluded]="replacement.excluded ?? []" [decidedCrewId]="decision()?.chosen_option?.crew_id ?? null"
-                        [deciding]="deciding()" (accept)="acceptOption($event)" />
-    }
-  }
-  @if (!awaiting && consequence) {
-    <app-options-card [options]="consequence.options ?? []" [nearMisses]="[]" [excluded]="[]"
-                      [decidedCrewId]="decision()?.chosen_option?.crew_id ?? null"
-                      [deciding]="deciding()" (accept)="acceptOption($event)" />
-  }
-
-  <!-- 1b. MODIFY — for when none of the options-card's own suggestions fit -->
+  <!-- Accept / Modify. Not decoration — without it a ranked recommendation
+       cannot be acted on, and the decision never reaches the audit log. -->
   @if (hasOptions && !turn.streaming) {
     @if (decision(); as dec) {
       <div class="turn__decision turn__decision--done">
@@ -73,22 +47,17 @@
         </button>
         <button class="ghost" type="button" [disabled]="deciding()" (click)="cancelModify()">Cancel</button>
       </div>
-    } @else if (modifyOptions.length) {
-      <button class="turn__modify-link" type="button" (click)="startModify()">
-        None of these — modify assignment
-      </button>
+    } @else {
+      <div class="turn__decision">
+        @for (o of acceptableOptions; track o.crew_id) {
+          <button type="button" [disabled]="deciding()" (click)="acceptOption(o)">
+            Assign {{ o.crew_id }}
+          </button>
+        }
+        @if (modifyOptions.length) {
+          <button class="turn__modify-link" type="button" (click)="startModify()">Someone else…</button>
+        }
+      </div>
     }
   }
-
-  <!-- 2. RULE TRACE -->
-  @if (turn.ruleChecks.length) { <app-rule-trace [checks]="turn.ruleChecks" /> }
-
-  <!-- 3. REASONING TRAIL -->
-  @if (turn.trace.length) { <app-trace-panel [steps]="turn.trace" /> }
-
-  <!-- 4. PROSE (last, cosmetic) -->
-  @if (turn.prose) {
-    <p class="prose">{{ turn.prose }}<span class="caret" [class.caret--on]="turn.streaming"></span></p>
-  }
-  @if (turn.narrative && !turn.prose && !awaiting) { <p class="prose">{{ turn.narrative }}</p> }
 </div>

@@ -262,10 +262,17 @@ class CoreToolPort(PostgresToolPort):
 
     def find_options(self, role: str | None = None, pairing_id: str | None = None,
                      flight_id: str | None = None, crew_id: str | None = None,
+                     flight_no: str | None = None, date: str | None = None,
                      callout_utc: str | None = None) -> dict[str, Any]:
         if not pairing_id and crew_id:
             pairing_id, rostered_role = self.assignment_for_crew(crew_id)
             role = role or rostered_role
+        # "I need a pilot for DX401" names a flight by its NUMBER. A flight_id
+        # is DX401-2026-09-15; the number alone is what a controller says, and
+        # it needs the same resolution check_legality and check_gate already
+        # do — including asking which date when the number flies on several.
+        if not pairing_id and (flight_id or flight_no):
+            flight_id = self.resolve_flight(flight_id, flight_no, date)
         if not pairing_id and flight_id:
             pairing_id = self.pairing_for_flight(flight_id)
         if pairing_id:

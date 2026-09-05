@@ -268,6 +268,19 @@ RULES: tuple[Rule, ...] = (
 )
 
 
+# Tier-1 rules that each answer ONE aspect of one crew member, and each offer a
+# single tool. A controller opening a person's file asks for several at once —
+# "duty headroom, expiring certs, and any risk" is three of these in one
+# sentence. First-match-wins gives that question the duty clock alone, and the
+# other two thirds cannot be answered because their tools were never offered.
+_PERSON_ASPECTS = frozenset({
+    Intent.LOOKUP_DUTY_CLOCK,
+    Intent.LOOKUP_CERT,
+    Intent.LOOKUP_RISK,
+    Intent.LOOKUP_ROSTER,
+})
+
+
 @dataclass(slots=True)
 class Route:
     """The router's decision, with its reasoning attached."""
@@ -340,6 +353,25 @@ def route_deterministic(text: str, ents: Entities | None = None) -> Route | None
         elif intent is Intent.FIND_REPLACEMENT and multi:
             intent = Intent.JOINT_PLAN
             notes.append("upgraded to JOINT_PLAN: two concurrent events")
+
+        # A question naming several aspects of one person is a dossier, not the
+        # first aspect that happened to match. LOOKUP_CREW carries the general
+        # `lookup` tool, so the loop can reach certifications and risk signals
+        # as well as the duty clock; the narrow intents each carry one tool and
+        # cannot. Requires a crew id — "which flights are at risk" names an
+        # aspect but no person, and is not a dossier.
+        elif intent in _PERSON_ASPECTS and ents.crew_ids:
+            also = sorted(
+                rule.name for rule in RULES
+                if rule.intent in _PERSON_ASPECTS
+                and rule.intent is not intent
+                and rule.pattern.search(text)
+            )
+            if also:
+                intent = Intent.LOOKUP_CREW
+                notes.append(
+                    f"widened to LOOKUP_CREW: asks for {rule.name} and "
+                    f"{', '.join(also)} together")
 
         return Route(
             intent=intent,

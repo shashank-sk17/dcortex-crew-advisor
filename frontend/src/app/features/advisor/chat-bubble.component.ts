@@ -3,17 +3,16 @@ import { AdvisorBus } from './advisor-bus';
 import { ConversationStore } from '../../services/conversation.store';
 import { ConversationComponent } from '../../components/conversation.component';
 import { ChatComposerComponent } from '../../components/chat-composer.component';
-import { EvidenceRailComponent } from '../../components/evidence-rail.component';
 
 /**
- * Floating advisor — a bubble that expands into the streamed reasoning + answer
- * cards (Tier 1/2/3 + abstain) + evidence rail. Why: the conversational layer is
- * a side-channel, not the main UI, and any view can push a question into it.
+ * Floating advisor — a bubble that expands into a plain chat thread. The
+ * evidence rail that used to sit alongside it was removed with the rest of the
+ * pipeline surface; this reads as a chatbot now.
  */
 @Component({
   selector: 'app-chat-bubble',
   standalone: true,
-  imports: [ConversationComponent, ChatComposerComponent, EvidenceRailComponent],
+  imports: [ConversationComponent, ChatComposerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './chat-bubble.component.html',
   styleUrl: './chat-bubble.component.scss',
