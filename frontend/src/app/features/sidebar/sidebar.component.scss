@@ -1,35 +1,29 @@
 .sb { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
 
-.sb .readout { margin-bottom: 10px; }
+.sb__hero {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 16px; margin-bottom: 8px; text-decoration: none;
+  background: var(--ground-1); border: var(--rule-w) solid var(--hairline);
+  border-radius: var(--radius); box-shadow: var(--shadow-card);
+}
+.sb__hero-label { font-size: 13px; color: var(--ink-2); font-weight: 600; }
 
 .sb__sections { display: flex; flex-direction: column; }
 
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tile {
-  display: flex; flex-direction: column; gap: 3px; padding: 11px 12px;
+  display: flex; flex-direction: column; gap: 2px; padding: 11px 12px;
   border: var(--rule-w) solid var(--hairline); border-radius: var(--radius-sm);
   background: var(--ground-2); text-decoration: none; color: inherit;
 }
-.tile__n {
-  font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-size: 20px; font-weight: 700; letter-spacing: -0.03em; line-height: 1;
-}
-.tile__l {
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--ink-2);
-}
+.tile__n { font-size: 22px; font-weight: 800; }
+.tile__l { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
 
 .bars, .pool, .risk, .pax { display: flex; flex-direction: column; gap: 6px; }
 .bar, .pool__row, .pax__row {
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  font-size: 14px; padding: 8px 10px; background: var(--ground-2);
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 14.5px; padding: 7px 10px; background: var(--ground-2);
   border-radius: var(--radius-sm); color: var(--ink-1); text-decoration: none;
-}
-/* every figure in the rail is an instrument reading, tabular so the columns
-   line up as the numbers change under a refresh */
-.bar b, .pool__row b, .pax__row b {
-  font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-size: 15px; font-weight: 700; letter-spacing: -0.02em;
 }
 .pool__row--low { border: var(--rule-w) solid var(--near-line); }
 .pax__route { color: var(--ink-2); font-size: 13px; margin-left: 4px; }

@@ -18,14 +18,13 @@
     <div class="loading-row"><span class="spinner"></span> Loading crew…</div>
   } @else {
     <div class="tbl">
-      <div class="tr th"><span>flag</span><span>crew</span><span>rank</span><span>base</span>
+      <div class="tr th"><span></span><span>crew</span><span>rank</span><span>base</span>
         <span>duty 7d</span><span>risk</span></div>
       @for (c of rows(); track c.crew_id) {
         <button class="tr" [class.sel]="selectedId() === c.crew_id"
                 [class.att]="c.attention.flag" (click)="select(c.crew_id)">
-          <span class="token" [attr.data-legend]="c.attention.flag ? 'near' : null"
-                [title]="c.attention.reasons.join('; ')">{{ c.attention.flag ? 'attn' : '—' }}</span>
-          <span><span class="tr__id">{{ c.crew_id }}</span> <span class="muted sm">{{ c.name }}</span></span>
+          <span class="dot" [class.on]="c.attention.flag" [title]="c.attention.reasons.join('; ')"></span>
+          <span><span class="mono">{{ c.crew_id }}</span> <span class="muted sm">{{ c.name }}</span></span>
           <span class="sm">{{ c.rank }}</span>
           <span class="mono sm">{{ c.base }}</span>
           <span class="mono sm" [class.tight]="c.duty_7d_headroom < 3">{{ c.duty_7d | number: '1.1-2' }}h</span>
@@ -101,7 +100,7 @@
               <div class="sect__t">{{ checkedPairing() }} legality</div>
               @for (r of v; track r.rule_id) {
                 <div class="vr" [attr.data-s]="r.status">
-                  <span class="mono">{{ r.rule_id }}</span><span><app-icon [name]="glyph(r.status)" /></span><span class="sm">{{ r.detail }}</span>
+                  <span class="mono">{{ r.rule_id }}</span><span>{{ glyph(r.status) }}</span><span class="sm">{{ r.detail }}</span>
                 </div>
               }
             </div>
@@ -109,7 +108,7 @@
         </div>
       }
 
-      <button class="ask" type="button" (click)="ask(d)"><app-icon name="advisor" /> Ask the advisor about {{ d.crew_id }}</button>
+      <button class="ask" type="button" (click)="ask(d)">💬 Ask the advisor about {{ d.crew_id }}</button>
     </div>
     }
     }

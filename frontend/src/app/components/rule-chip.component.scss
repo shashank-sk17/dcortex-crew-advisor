@@ -1,12 +1,12 @@
 .rc {
-  display: grid; grid-template-columns: 112px 16px auto 1fr; gap: 9px; align-items: center;
-  padding: 7px 9px; border: var(--rule-w) solid var(--hairline); border-radius: var(--radius-sm);
-  background: var(--ground-2); font-size: 12.5px;
+  display: grid; grid-template-columns: 108px 18px auto 1fr; gap: 8px; align-items: baseline;
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface-2); font-size: 12px;
 }
 .rc--pass { border-color: var(--pass-line); }
 .rc--fail { border-color: var(--fail-line); background: var(--fail-bg); }
-.rc__id { color: var(--ink-1); font-weight: 700; letter-spacing: -0.01em; }
-.rc__status { display: grid; place-items: center; font-size: 14px; color: var(--ink-faint); }
+.rc__id { color: var(--fg-1); }
+.rc__status { text-align: center; }
 .rc--pass .rc__status { color: var(--pass); }
 .rc--fail .rc__status { color: var(--fail); }
 .rc__margin { color: var(--fg-2); white-space: nowrap; }

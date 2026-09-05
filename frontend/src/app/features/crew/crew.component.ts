@@ -7,7 +7,6 @@ import { AppState } from '../../core/app-state';
 import { AdvisorBus } from '../advisor/advisor-bus';
 import { CrewDetail, CrewFilter, CrewRow, DutyClock, RuleVerdict } from '../../core/api.types';
 import { ModalComponent } from '../../components/modal.component';
-import { IconComponent } from '../../components/icon.component';
 
 const FILTERS: { key: CrewFilter; label: string }[] = [
   { key: 'needs_attention', label: 'Needs attention' },
@@ -27,7 +26,7 @@ const ROLES = ['Captain', 'First Officer', 'Senior Cabin Crew', 'Cabin Crew'];
 @Component({
   selector: 'app-crew',
   standalone: true,
-  imports: [IconComponent, DecimalPipe, ModalComponent],
+  imports: [DecimalPipe, ModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './crew.component.html',
   styleUrl: './crew.component.scss',
@@ -114,8 +113,8 @@ export class CrewComponent {
     this.checkedPairing.set(pairingId);
     this.api.crewLegality(crewId, pairingId).subscribe((v) => this.verdicts.set(v));
   }
-  glyph(s: string): 'check' | 'breach' | 'clock' {
-    return s === 'PASS' ? 'check' : s === 'FAIL' ? 'breach' : 'clock';
+  glyph(s: string): string {
+    return s === 'PASS' ? '✓' : s === 'FAIL' ? '✗' : '·';
   }
   ask(d: CrewDetail): void {
     this.bus.ask(`Tell me about ${d.crew_id} (${d.rank}, ${d.base}) — duty headroom, expiring certs, and any risk.`);

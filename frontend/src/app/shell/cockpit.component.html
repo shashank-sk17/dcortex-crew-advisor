@@ -1,12 +1,9 @@
 <div class="cockpit">
   <header class="topbar">
-    <a class="brand" routerLink="/board">
-      <span class="brand__name">Crew Ops</span>
-      <span class="brand__org">dCortex</span>
-    </a>
+    <span class="brand">dCortex · Crew Ops</span>
     <nav class="nav">
-      <a routerLink="/board" routerLinkActive="on"><app-icon name="flight" /> Flights</a>
-      <a routerLink="/crew" routerLinkActive="on"><app-icon name="crew" /> Crew</a>
+      <a routerLink="/board" routerLinkActive="on">Flights</a>
+      <a routerLink="/crew" routerLinkActive="on">Crew</a>
     </nav>
     <span class="spacer"></span>
     <label class="date">
@@ -28,7 +25,7 @@
     <aside class="left">
       <button class="rail-tab rail-tab--left" type="button" (click)="toggleLeft()"
               [attr.aria-expanded]="leftOpen()" aria-label="Toggle sidebar">
-        <span class="rail-tab__chev" [class.flip]="leftOpen()"><app-icon name="chevron" /></span>
+        <span class="rail-tab__chev" [class.flip]="!leftOpen()">‹</span>
       </button>
       @if (leftOpen()) {
         <app-sidebar />
@@ -40,7 +37,7 @@
     <aside class="right">
       <button class="rail-tab rail-tab--right" type="button" (click)="toggleRight()"
               [attr.aria-expanded]="rightOpen()" aria-label="Toggle alerts">
-        <span class="rail-tab__chev" [class.flip]="!rightOpen()"><app-icon name="chevron" /></span>
+        <span class="rail-tab__chev" [class.flip]="!rightOpen()">›</span>
       </button>
       @if (rightOpen()) {
         <app-alerts-panel />

@@ -15,16 +15,15 @@
   } @else {
     <div class="tbl">
       <div class="tr th">
-        <span>rank</span><span>flight</span><span>route</span><span>dep–arr (UTC)</span>
+        <span>rank</span><span>flight</span><span>route</span><span>dep→arr (UTC)</span>
         <span>tail</span><span>slack</span><span>down</span>
       </div>
       @for (f of rows(); track f.flight_id) {
         <button class="tr" [class.sel]="selectedId() === f.flight_id"
                 [attr.data-rank]="f.delay_rank" (click)="select(f)">
-          <span class="token" [attr.data-legend]="f.delay_rank"
-                [title]="f.delay_rank_reasons.join('; ')">{{ f.delay_rank ?? '—' }}</span>
-          <span class="tr__no">{{ f.flight_no }}</span>
-          <span class="tr__route">{{ f.dep_station }}<span class="tr__arrow">→</span>{{ f.arr_station }}</span>
+          <span class="dot" [attr.data-rank]="f.delay_rank" [title]="f.delay_rank_reasons.join('; ')"></span>
+          <span class="mono">{{ f.flight_no }}</span>
+          <span>{{ f.dep_station }}→{{ f.arr_station }}</span>
           <span class="mono sm">{{ f.dep_utc | date: 'HH:mm' : 'UTC' }}–{{ f.arr_utc | date: 'HH:mm' : 'UTC' }}</span>
           <span class="mono sm">{{ f.aircraft }}</span>
           <span class="mono sm" [class.tight]="f.slack_minutes != null && f.slack_minutes < 45">
@@ -91,7 +90,7 @@
             @if (!cv.options.length) { <div class="muted sm">no clean reserve — ask the advisor</div> }
           } @else { <div class="muted sm">…</div> }
           <div class="drawer__cta">
-            <button class="ask" type="button" (click)="askCover(d)"><app-icon name="advisor" /> Ask the advisor</button>
+            <button class="ask" type="button" (click)="askCover(d)">💬 Ask the advisor</button>
           </div>
         </div>
       }

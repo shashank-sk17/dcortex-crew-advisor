@@ -9,8 +9,8 @@
             [class.chip--warn]="turn.confidence === 'medium'"
             [class.chip--fail]="turn.confidence === 'low'">{{ turn.confidence }} confidence</span>
     }
-    @if (turn.grounded === true) { <span class="chip chip--pass"><app-icon name="check" /> grounded</span> }
-    @if (turn.grounded === false) { <span class="chip chip--fail"><app-icon name="alert" /> ungrounded</span> }
+    @if (turn.grounded === true) { <span class="chip chip--pass">✓ grounded</span> }
+    @if (turn.grounded === false) { <span class="chip chip--fail">⚠ ungrounded</span> }
     @if (turn.elapsedMs != null) { <span class="chip chip--muted mono">{{ turn.elapsedMs }}ms</span> }
   </div>
 
@@ -49,7 +49,7 @@
   @if (hasOptions && !turn.streaming) {
     @if (decision(); as dec) {
       <div class="turn__decision turn__decision--done">
-        <span class="chip chip--pass"><app-icon name="check" /> assigned</span>
+        <span class="chip chip--pass">✓ assigned</span>
         {{ dec.chosen_option?.crew_id }} — {{ dec.chosen_option?.action }} · recorded to the shift log.
       </div>
     } @else if (showModify()) {
