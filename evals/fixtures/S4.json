@@ -1,0 +1,49 @@
+{
+ "scenario_id": "S4",
+ "title": "Tech delay cascades into an FDP breach",
+ "difficulty": "medium-hard",
+ "event": {
+  "type": "DELAY",
+  "aircraft": "VT-DXA",
+  "date": "2026-09-16",
+  "delay_hours": 1.5,
+  "narrative": "VT-DXA has a 90-minute technical delay before DX401 on 16 Sep. All four legs shift by 90 minutes."
+ },
+ "tier": 3,
+ "answer": {
+  "kind": "consequence",
+  "options": [
+   {
+    "rank": 1,
+    "action": "Original crew operates DX401\u2013DX403 (delayed); full reserve set (CPT, FO, SCC, 3 CC) operates DX404",
+    "legal": true,
+    "cost_inr": 75000,
+    "reasoning": "Delayed 3-leg duty FDP 9.5h vs 12.5h limit \u2014 legal. Reserve set covers the last sector (callout window and 12h-rest all satisfied)."
+   },
+   {
+    "rank": 2,
+    "action": "Cancel DX404",
+    "legal": true,
+    "cost_inr": 250000,
+    "reasoning": "Legal but ~3.3x more expensive than re-crewing one leg; 162 passengers stranded."
+   }
+  ],
+  "world_diff": {
+   "changed": [
+    {
+     "rule_id": "RULE-FDP-01",
+     "fdp_after_delay": 12.75,
+     "fdp_limit": 12.0,
+     "detail": "RULE-FDP-01: delayed duty runs 12.75h vs 12.0h limit (4 sectors) \u2014 the rostered crew cannot legally complete DX404."
+    }
+   ]
+  }
+ },
+ "expected_choice": {
+  "rank": 1,
+  "action": "Original crew operates DX401\u2013DX403 (delayed); full reserve set (CPT, FO, SCC, 3 CC) operates DX404",
+  "legal": true,
+  "cost_inr": 75000,
+  "reasoning": "Delayed 3-leg duty FDP 9.5h vs 12.5h limit \u2014 legal. Reserve set covers the last sector (callout window and 12h-rest all satisfied)."
+ }
+}

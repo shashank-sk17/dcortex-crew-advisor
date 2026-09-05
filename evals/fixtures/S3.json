@@ -1,0 +1,201 @@
+{
+ "scenario_id": "S3",
+ "title": "BLR station closure 08:00\u201314:00Z, 17 Sep",
+ "difficulty": "medium",
+ "event": {
+  "type": "STATION_CLOSURE",
+  "station": "BLR",
+  "window_utc": {
+   "start": "2026-09-17T08:00:00Z",
+   "end": "2026-09-17T14:00:00Z"
+  },
+  "narrative": "BLR is closed to all departures and arrivals 08:00\u201314:00Z on 17 Sep (fuel-farm incident). Flights airborne may not land at BLR in the window."
+ },
+ "tier": 3,
+ "answer": {
+  "kind": "consequence",
+  "options": [],
+  "blast_radius": {
+   "nodes": 13,
+   "flights": 13,
+   "aircraft": 6,
+   "passengers": 0,
+   "edges": [
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX402-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX422-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX462-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX453-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX433-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX403-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX413-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX423-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX454-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX434-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX404-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX424-2026-09-17",
+     "kind": "direct"
+    },
+    {
+     "from": "STATION_CLOSURE",
+     "to": "DX588-2026-09-17",
+     "kind": "direct"
+    }
+   ]
+  },
+  "world_diff": {
+   "changed": [
+    {
+     "flight_id": "DX402-2026-09-17",
+     "pairing_id": "P-2204",
+     "min_delay_hours": 5.75,
+     "crew_fdp_after_delay": 17.0,
+     "fdp_limit": 12.0,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX422-2026-09-17",
+     "pairing_id": "P-2211",
+     "min_delay_hours": 5.75,
+     "crew_fdp_after_delay": 17.0,
+     "fdp_limit": 12.0,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX462-2026-09-17",
+     "pairing_id": "P-2232",
+     "min_delay_hours": 5.75,
+     "crew_fdp_after_delay": 11.0,
+     "fdp_limit": 13.0,
+     "action": "delay (crew legal)"
+    },
+    {
+     "flight_id": "DX453-2026-09-17",
+     "pairing_id": "P-2225",
+     "min_delay_hours": 6.5,
+     "crew_fdp_after_delay": 14.75,
+     "fdp_limit": 12.0,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX433-2026-09-17",
+     "pairing_id": "P-2218",
+     "min_delay_hours": 6.0,
+     "crew_fdp_after_delay": 15.75,
+     "fdp_limit": 12.0,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX403-2026-09-17",
+     "pairing_id": "P-2204",
+     "min_delay_hours": 5.0,
+     "crew_fdp_after_delay": 16.25,
+     "fdp_limit": 12.0,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX413-2026-09-17",
+     "pairing_id": "P-2293",
+     "min_delay_hours": 3.25,
+     "crew_fdp_after_delay": 12.75,
+     "fdp_limit": 12.5,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX423-2026-09-17",
+     "pairing_id": "P-2211",
+     "min_delay_hours": 5.0,
+     "crew_fdp_after_delay": 16.25,
+     "fdp_limit": 12.0,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX454-2026-09-17",
+     "pairing_id": "P-2225",
+     "min_delay_hours": 3.75,
+     "crew_fdp_after_delay": 12.0,
+     "fdp_limit": 12.0,
+     "action": "delay (crew legal)"
+    },
+    {
+     "flight_id": "DX434-2026-09-17",
+     "pairing_id": "P-2218",
+     "min_delay_hours": 2.75,
+     "crew_fdp_after_delay": 12.5,
+     "fdp_limit": 12.0,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX404-2026-09-17",
+     "pairing_id": "P-2204",
+     "min_delay_hours": 2.25,
+     "crew_fdp_after_delay": 13.5,
+     "fdp_limit": 12.0,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX424-2026-09-17",
+     "pairing_id": "P-2211",
+     "min_delay_hours": 1.75,
+     "crew_fdp_after_delay": 13.0,
+     "fdp_limit": 12.0,
+     "action": "delay exceeds crew FDP \u2014 re-crew tail legs from reserves or cancel"
+    },
+    {
+     "flight_id": "DX588-2026-09-17",
+     "pairing_id": "P-2293",
+     "min_delay_hours": 2.25,
+     "crew_fdp_after_delay": 11.75,
+     "fdp_limit": 12.5,
+     "action": "delay (crew legal)"
+    }
+   ]
+  }
+ },
+ "expected_choice": null
+}

@@ -18,6 +18,7 @@ no-op (DECISIONS.md #3).
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -73,7 +74,8 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "name": "check_legality",
         "description": (
-            "Evaluate all 7 rules for assigning a crew member to a pairing. "
+            "Evaluate all 7 rules for assigning a crew member to a pairing, "
+            "named directly or via a flight on it. "
             "Returns a verdict per rule with the numbers, never a bare boolean. "
             "This is the only legal authority in the system."
         ),
@@ -82,12 +84,25 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "properties": {
                 "crew_id": {"type": "string", "pattern": "^C-[0-9]{4}$"},
                 "pairing_id": {"type": "string", "pattern": "^P-[0-9]{4}$"},
+                "flight_id": {
+                    "type": "string",
+                    "pattern": "^DX[0-9]{3}-[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "description": "Alternative to pairing_id; its pairing is resolved.",
+                },
+                "flight_no": {
+                    "type": "string", "pattern": "^DX[0-9]{3}$",
+                    "description": (
+                        "A flight number without a date is ambiguous — DX412 "
+                        "flies on three days — so pass `date` alongside it."
+                    ),
+                },
+                "date": {"type": "string", "description": "ISO date, with flight_no"},
                 "delay_h": {
                     "type": "number",
                     "description": "Hypothetical departure delay, for near-miss checks",
                 },
             },
-            "required": ["crew_id", "pairing_id"],
+            "required": ["crew_id"],
         },
     },
     {
@@ -95,19 +110,38 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "description": (
             "Enumerate and rank every way to cover an uncrewed pairing: reserve "
             "callout, day-off callout, deadhead positioning, delay, cancel. "
-            "Returns the candidate funnel with a reason for every drop."
+            "Returns the candidate funnel with a reason for every drop. "
+            "Identify by pairing_id, or by flight_id if you only know the leg. "
+            "Never construct an id from a route like 'BLR->BOM' — look it up."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "pairing_id": {"type": "string", "pattern": "^P-[0-9]{4}$"},
+                "flight_id": {
+                    "type": "string",
+                    "pattern": "^DX[0-9]{3}-[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "description": (
+                        "Alternative to pairing_id when the disruption is named "
+                        "by flight. The pairing is resolved for you."
+                    ),
+                },
+                "crew_id": {
+                    "type": "string", "pattern": "^C-[0-9]{4}$",
+                    "description": (
+                        "The crew member who is unavailable. Their pairing AND "
+                        "role are resolved from the roster, so neither has to "
+                        "be supplied or guessed."
+                    ),
+                },
                 "role": {
                     "type": "string",
                     "enum": ["Captain", "First Officer", "Senior Cabin Crew", "Cabin Crew"],
+                    "description": "Inferred from crew_id when that is given.",
                 },
                 "callout_utc": {"type": "string", "description": "ISO-8601 UTC"},
             },
-            "required": ["pairing_id", "role"],
+            "required": [],
         },
     },
     {
@@ -175,6 +209,106 @@ TOOL_NAMES: frozenset[str] = frozenset(t["name"] for t in TOOL_SCHEMAS)
 
 
 # --------------------------------------------------------------------------
+# Filter guard rails
+#
+# Measured over the 16 tier-1 gold questions on qwen3:8b: 12 produced a failed
+# call, every one of them an invented column name. The guesses were not random
+# — they were the *semantically right* field under a plausible other name
+# (`departure` for `dep_station`, `expiry_date` for `valid_to`). So three
+# layers, in order of preference:
+#
+#   1. tell the model the real column names   (schema enrichment, below)
+#   2. map a near-miss onto the real one      (FIELD_ALIASES)
+#   3. reject loudly, naming what is valid    (resolve_filters)
+#
+# Guarding alone would only convert a wrong answer into a failed one; the model
+# still has to be able to succeed.
+# --------------------------------------------------------------------------
+
+FIELD_ALIASES: dict[str, str] = {
+    # station fields
+    "departure": "dep_station", "origin": "dep_station", "from": "dep_station",
+    "departure_station": "dep_station", "dep": "dep_station",
+    "destination": "arr_station", "arrival": "arr_station", "to": "arr_station",
+    "arrival_station": "arr_station", "arr": "arr_station",
+    # identity
+    "crew": "crew_id", "crewid": "crew_id", "employee_id": "crew_id",
+    "pairing": "pairing_id", "flight": "flight_no", "flight_number": "flight_no",
+    "aircraft_registration": "aircraft", "tail": "aircraft", "registration": "aircraft",
+    # certifications
+    "expiry_date": "valid_to", "expiry": "valid_to", "expires": "valid_to",
+    "expires_on": "valid_to", "valid_until": "valid_to", "cert": "cert_type",
+    "certification": "cert_type", "type": "cert_type",
+    # misc
+    "station": "base", "home_base": "base", "rank_name": "rank",
+    "role": "rank", "position": "rank", "job": "rank",
+    "aircraft_rating": "ratings", "rating": "ratings",
+}
+
+
+def resolve_filters(
+    entity: str, filters: dict[str, Any] | None, known: frozenset[str] | set[str]
+) -> dict[str, Any]:
+    """Map filter keys onto real columns, or fail naming the valid ones.
+
+    `known` comes from the live backend, so JSON and Postgres each get their
+    own column set rather than sharing one hardcoded list.
+    """
+    resolved: dict[str, Any] = {}
+    for key, value in (filters or {}).items():
+        if key in known:
+            resolved[key] = value
+            continue
+        alias = FIELD_ALIASES.get(key.lower().replace(" ", "_"))
+        if alias and alias in known:
+            resolved[alias] = value
+            continue
+        raise ToolError(
+            "UNRESOLVED_ENTITY",
+            f"{entity} has no field {key!r}. Valid fields: {', '.join(sorted(known))}",
+        )
+    return resolved
+
+
+def schemas_for_port(port: Any) -> list[dict[str, Any]]:
+    """TOOL_SCHEMAS with `lookup` enriched by the backend's real field names.
+
+    Without this the model is guessing at column names from the entity name
+    alone, which is where nearly every tier-1 tool failure came from.
+    """
+    describe = getattr(port, "entity_fields", None)
+    if describe is None:
+        return TOOL_SCHEMAS
+
+    lines = []
+    for entity in sorted(getattr(port, "ENTITIES", ()) or ()):
+        try:
+            fields = sorted(describe(entity))
+        except Exception:
+            continue
+        lines.append(f"  {entity}: {', '.join(fields)}")
+    if not lines:
+        return TOOL_SCHEMAS
+
+    enriched = []
+    for tool in TOOL_SCHEMAS:
+        if tool["name"] != "lookup":
+            enriched.append(tool)
+            continue
+        clone = {**tool, "input_schema": {**tool["input_schema"],
+                                          "properties": {**tool["input_schema"]["properties"]}}}
+        clone["input_schema"]["properties"]["filters"] = {
+            "type": "object",
+            "description": (
+                "Field equality filters. Use ONLY these field names — any other "
+                "key is rejected:\n" + "\n".join(lines)
+            ),
+        }
+        enriched.append(clone)
+    return enriched
+
+
+# --------------------------------------------------------------------------
 # The seam to core/
 # --------------------------------------------------------------------------
 
@@ -231,26 +365,44 @@ class PlaceholderToolPort:
 
     # -- implemented against raw data -------------------------------------
 
-    def lookup(self, entity: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        source = {
-            "crew": "crew",
-            "flights": "flights",
-            "reserves": "reserve_pool",
-            "certifications": "certifications",
-            "risk_signals": "risk_signals",
-            "costs": "costs",
-            "pairings": "rosters",
-        }.get(entity)
+    SOURCES = {
+        "crew": "crew", "flights": "flights", "reserves": "reserve_pool",
+        "certifications": "certifications", "risk_signals": "risk_signals",
+        "costs": "costs", "pairings": "rosters",
+    }
+    ENTITIES = tuple(SOURCES)
+
+    def _rows(self, entity: str) -> list[dict[str, Any]]:
+        source = self.SOURCES.get(entity)
         if source is None:
             raise ToolError("UNRESOLVED_ENTITY", f"unknown entity {entity!r}")
-
         rows = self._load(source)
         if entity == "pairings":
             rows = rows["pairings"]
-        if isinstance(rows, dict):
-            rows = [rows]
+        return [rows] if isinstance(rows, dict) else rows
 
-        for key, want in (filters or {}).items():
+    def entity_fields(self, entity: str) -> frozenset[str]:
+        rows = self._rows(entity)
+        return frozenset(rows[0].keys()) if rows else frozenset()
+
+    def pairing_for_flight(self, flight_id: str) -> str:
+        """Which pairing operates a given leg.
+
+        A controller names a disruption by route or flight ("captain of
+        BLR->BOM is out"), but cover is found per *pairing* — crew fly whole
+        pairings, not single legs. Without this hop the model invents a
+        pairing id from the route, which is how "BLR->BOM" ended up being
+        passed as one.
+        """
+        for pairing in self._rows("pairings"):
+            for day in pairing.get("days", []):
+                if flight_id in day.get("flights", []):
+                    return pairing["pairing_id"]
+        raise ToolError("UNRESOLVED_ENTITY", f"no pairing operates {flight_id!r}")
+
+    def lookup(self, entity: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        rows = self._rows(entity)
+        for key, want in resolve_filters(entity, filters, self.entity_fields(entity)).items():
             rows = [r for r in rows if r.get(key) == want]
         return rows
 
@@ -287,6 +439,42 @@ class PlaceholderToolPort:
 # --------------------------------------------------------------------------
 
 
+def validate_args(name: str, args: dict[str, Any]) -> None:
+    """Check arguments against the tool's own JSON Schema before calling it.
+
+    The schemas already carry patterns like `^P-[0-9]{4}$`; nothing was
+    enforcing them, so `find_options(pairing_id="BLR->BOM")` reached the port
+    and failed there with a message about missing fixtures rather than about
+    the malformed id. Catching it here says what is actually wrong.
+    """
+    schema = next((t["input_schema"] for t in TOOL_SCHEMAS if t["name"] == name), None)
+    if not schema:
+        return
+    props = schema.get("properties", {})
+
+    for key, value in args.items():
+        spec = props.get(key)
+        if not spec or value is None:
+            continue
+        if (pattern := spec.get("pattern")) and isinstance(value, str):
+            if not re.fullmatch(pattern, value):
+                raise ToolError(
+                    "UNRESOLVED_ENTITY",
+                    f"{name}: {key}={value!r} is not a valid identifier "
+                    f"(expected {pattern}). Look the value up first rather "
+                    f"than constructing it.",
+                )
+        if (allowed := spec.get("enum")) and value not in allowed:
+            raise ToolError(
+                "UNRESOLVED_ENTITY",
+                f"{name}: {key}={value!r} is not one of {', '.join(map(str, allowed))}",
+            )
+
+    for required in schema.get("required", []):
+        if required not in args:
+            raise ToolError("UNRESOLVED_ENTITY", f"{name}: {required!r} is required")
+
+
 def dispatch(port: ToolPort, name: str, args: dict[str, Any]) -> TraceEntry:
     """Invoke one tool and record it. Never raises — errors become trace rows.
 
@@ -299,6 +487,7 @@ def dispatch(port: ToolPort, name: str, args: dict[str, Any]) -> TraceEntry:
         return TraceEntry(tool=name, args=args, error=f"unknown tool {name!r}")
 
     try:
+        validate_args(name, args)
         result = getattr(port, name)(**args)
         error = None
     except ToolError as exc:

@@ -218,6 +218,44 @@ def extract(text: str) -> Entities:
 
 
 # --------------------------------------------------------------------------
+# A rank used to *describe* a named crew member — "FO C-2087", "Captain
+# C-1042" — as opposed to specifying a seat to be filled ("cover as Captain").
+# Only the descriptive form asserts something about that person that the
+# roster can contradict.
+STATED_RANK_RE = re.compile(
+    r"\b(captain|cpt|capt|commander|skipper|first officer|f/?o|co-?pilot|"
+    r"senior cabin crew|scc|purser|cabin crew|flight attendant)\s+(C-\d{4})\b",
+    re.I,
+)
+
+RANK_WORD_TO_RANK = {
+    "captain": "Captain", "cpt": "Captain", "capt": "Captain",
+    "commander": "Captain", "skipper": "Captain",
+    "first officer": "First Officer", "fo": "First Officer",
+    "f/o": "First Officer", "co-pilot": "First Officer",
+    "copilot": "First Officer",
+    "senior cabin crew": "Senior Cabin Crew", "scc": "Senior Cabin Crew",
+    "purser": "Senior Cabin Crew",
+    "cabin crew": "Cabin Crew", "flight attendant": "Cabin Crew",
+}
+
+
+def stated_ranks(text: str) -> list[tuple[str, str]]:
+    """(crew_id, rank the query claims they hold), for descriptive uses only.
+
+    >>> stated_ranks("If I move FO C-2087 onto DX412")
+    [('C-2087', 'First Officer')]
+    >>> stated_ranks("who can cover P-2291 as Captain")
+    []
+    """
+    out = []
+    for word, crew_id in STATED_RANK_RE.findall(text):
+        key = word.lower().replace("/", "").replace(" ", " ").strip()
+        if rank := RANK_WORD_TO_RANK.get(key) or RANK_WORD_TO_RANK.get(key.replace("-", "")):
+            out.append((crew_id, rank))
+    return out
+
+
 # Masking — for the embedding path only
 # --------------------------------------------------------------------------
 

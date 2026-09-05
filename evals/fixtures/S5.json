@@ -1,0 +1,1072 @@
+{
+ "scenario_id": "S5",
+ "title": "Certification lapse discovered pre-flight",
+ "difficulty": "medium",
+ "event": {
+  "type": "CERT_EXPIRY",
+  "crew_id": "C-5417",
+  "pairing_id": "P-2213",
+  "reported_utc": "2026-09-18T10:00:00Z",
+  "narrative": "Compliance flags at 10:00Z on 18 Sep that C-5417's recurrent_training expired on 17 Sep. Their rostered duty on 19 Sep (VT-DXB) is now illegal under RULE-CERT-06."
+ },
+ "tier": 2,
+ "answer": {
+  "kind": "replacement",
+  "uncovered_flights": [],
+  "at_risk_flights": [],
+  "passengers_affected": 0,
+  "funnel": [
+   {
+    "stage": "considered",
+    "count": 64,
+    "dropped": 0,
+    "reason": ""
+   },
+   {
+    "stage": "qualified",
+    "count": 58,
+    "dropped": 6,
+    "reason": "no rating for the aircraft type"
+   },
+   {
+    "stage": "on call",
+    "count": 55,
+    "dropped": 3,
+    "reason": "reserve window does not cover report time"
+   },
+   {
+    "stage": "available",
+    "count": 46,
+    "dropped": 9,
+    "reason": "already rostered / double-booked"
+   },
+   {
+    "stage": "rested",
+    "count": 43,
+    "dropped": 3,
+    "reason": "insufficient rest"
+   },
+   {
+    "stage": "legal",
+    "count": 43,
+    "dropped": 0,
+    "reason": ""
+   }
+  ],
+  "options": [
+   {
+    "action": "Assign Cabin Crew C-4809 (reserve callout)",
+    "crew_id": "C-4809",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 9500,
+    "delay_hours": 0.0,
+    "rank": 1
+   },
+   {
+    "action": "Assign Cabin Crew C-1021 (day-off callout)",
+    "crew_id": "C-1021",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 2
+   },
+   {
+    "action": "Assign Cabin Crew C-1385 (day-off callout)",
+    "crew_id": "C-1385",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 3
+   },
+   {
+    "action": "Assign Cabin Crew C-1414 (day-off callout)",
+    "crew_id": "C-1414",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 4
+   },
+   {
+    "action": "Assign Cabin Crew C-1569 (day-off callout)",
+    "crew_id": "C-1569",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 5
+   },
+   {
+    "action": "Assign Cabin Crew C-1748 (day-off callout)",
+    "crew_id": "C-1748",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 6
+   },
+   {
+    "action": "Assign Cabin Crew C-1873 (day-off callout)",
+    "crew_id": "C-1873",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 7
+   },
+   {
+    "action": "Assign Cabin Crew C-1970 (day-off callout)",
+    "crew_id": "C-1970",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 8
+   },
+   {
+    "action": "Assign Cabin Crew C-2083 (day-off callout)",
+    "crew_id": "C-2083",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 9
+   },
+   {
+    "action": "Assign Cabin Crew C-2165 (day-off callout)",
+    "crew_id": "C-2165",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 10
+   },
+   {
+    "action": "Assign Cabin Crew C-2252 (day-off callout)",
+    "crew_id": "C-2252",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 11
+   },
+   {
+    "action": "Assign Cabin Crew C-2286 (day-off callout)",
+    "crew_id": "C-2286",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 12
+   },
+   {
+    "action": "Assign Cabin Crew C-2435 (day-off callout)",
+    "crew_id": "C-2435",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 13
+   },
+   {
+    "action": "Assign Cabin Crew C-2751 (day-off callout)",
+    "crew_id": "C-2751",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 14
+   },
+   {
+    "action": "Assign Cabin Crew C-2840 (day-off callout)",
+    "crew_id": "C-2840",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 15
+   },
+   {
+    "action": "Assign Cabin Crew C-2907 (day-off callout)",
+    "crew_id": "C-2907",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 16
+   },
+   {
+    "action": "Assign Cabin Crew C-3046 (day-off callout)",
+    "crew_id": "C-3046",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 17
+   },
+   {
+    "action": "Assign Cabin Crew C-3167 (day-off callout)",
+    "crew_id": "C-3167",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 18
+   },
+   {
+    "action": "Assign Cabin Crew C-3545 (day-off callout)",
+    "crew_id": "C-3545",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 19
+   },
+   {
+    "action": "Assign Cabin Crew C-3757 (day-off callout)",
+    "crew_id": "C-3757",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 20
+   },
+   {
+    "action": "Assign Cabin Crew C-3973 (day-off callout)",
+    "crew_id": "C-3973",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 21
+   },
+   {
+    "action": "Assign Cabin Crew C-3988 (day-off callout)",
+    "crew_id": "C-3988",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 22
+   },
+   {
+    "action": "Assign Cabin Crew C-4273 (day-off callout)",
+    "crew_id": "C-4273",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 23
+   },
+   {
+    "action": "Assign Cabin Crew C-4326 (day-off callout)",
+    "crew_id": "C-4326",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 24
+   },
+   {
+    "action": "Assign Cabin Crew C-4395 (day-off callout)",
+    "crew_id": "C-4395",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 25
+   },
+   {
+    "action": "Assign Cabin Crew C-4458 (day-off callout)",
+    "crew_id": "C-4458",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 26
+   },
+   {
+    "action": "Assign Cabin Crew C-4462 (day-off callout)",
+    "crew_id": "C-4462",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 27
+   },
+   {
+    "action": "Assign Cabin Crew C-4531 (day-off callout)",
+    "crew_id": "C-4531",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 28
+   },
+   {
+    "action": "Assign Cabin Crew C-4588 (day-off callout)",
+    "crew_id": "C-4588",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 29
+   },
+   {
+    "action": "Assign Cabin Crew C-4622 (day-off callout)",
+    "crew_id": "C-4622",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 30
+   },
+   {
+    "action": "Assign Cabin Crew C-4679 (day-off callout)",
+    "crew_id": "C-4679",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 31
+   },
+   {
+    "action": "Assign Cabin Crew C-4874 (day-off callout)",
+    "crew_id": "C-4874",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 32
+   },
+   {
+    "action": "Assign Cabin Crew C-5751 (day-off callout)",
+    "crew_id": "C-5751",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 33
+   },
+   {
+    "action": "Assign Cabin Crew C-5795 (day-off callout)",
+    "crew_id": "C-5795",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 34
+   },
+   {
+    "action": "Assign Cabin Crew C-5881 (day-off callout)",
+    "crew_id": "C-5881",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 35
+   },
+   {
+    "action": "Assign Cabin Crew C-5906 (day-off callout)",
+    "crew_id": "C-5906",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 36
+   },
+   {
+    "action": "Assign Cabin Crew C-5994 (day-off callout)",
+    "crew_id": "C-5994",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 12500,
+    "delay_hours": 0.0,
+    "rank": 37
+   },
+   {
+    "action": "Assign Cabin Crew C-1622 (reserve callout + deadhead from DEL (first departure delayed ~7.0h))",
+    "crew_id": "C-1622",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 53800,
+    "delay_hours": 7.0,
+    "rank": 38
+   },
+   {
+    "action": "Assign Cabin Crew C-4280 (day-off callout + deadhead from DEL (first departure delayed ~7.0h))",
+    "crew_id": "C-4280",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 56800,
+    "delay_hours": 7.0,
+    "rank": 39
+   },
+   {
+    "action": "Assign Cabin Crew C-4839 (day-off callout + deadhead from DEL (first departure delayed ~7.0h))",
+    "crew_id": "C-4839",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 56800,
+    "delay_hours": 7.0,
+    "rank": 40
+   },
+   {
+    "action": "Assign Cabin Crew C-5168 (day-off callout + deadhead from DEL (first departure delayed ~7.0h))",
+    "crew_id": "C-5168",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 56800,
+    "delay_hours": 7.0,
+    "rank": 41
+   },
+   {
+    "action": "Assign Cabin Crew C-5444 (day-off callout + deadhead from DEL (first departure delayed ~7.0h))",
+    "crew_id": "C-5444",
+    "legal": true,
+    "rules_checked": [
+     "RULE-FDP-01",
+     "RULE-DUTY-02",
+     "RULE-FLT-03",
+     "RULE-REST-04",
+     "RULE-QUAL-05",
+     "RULE-CERT-06",
+     "RULE-BASE-07"
+    ],
+    "cost_inr": 56800,
+    "delay_hours": 7.0,
+    "rank": 42
+   },
+   {
+    "action": "Cancel all 4 flights of the pairing",
+    "crew_id": null,
+    "legal": true,
+    "rules_checked": [],
+    "cost_inr": 1000000,
+    "delay_hours": 0.0,
+    "rank": 43
+   }
+  ],
+  "near_misses": [],
+  "excluded": [
+   {
+    "crew_id": "C-2876",
+    "reason": "RULE-REST-04: only -10.75h rest before COVER on 2026-09-19 (rest conflict); double-booked: P-2206 overlaps COVER on 2026-09-19",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -10.75h rest before COVER on 2026-09-19 (rest conflict); double-booked: P-2206 overlaps COVER on 2026-09-19"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-1542",
+    "reason": "RULE-REST-04: only -10.75h rest before COVER on 2026-09-19 (rest conflict); double-booked: P-2206 overlaps COVER on 2026-09-19",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -10.75h rest before COVER on 2026-09-19 (rest conflict); double-booked: P-2206 overlaps COVER on 2026-09-19"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-5089",
+    "reason": "RULE-REST-04: only -10.75h rest before COVER on 2026-09-19 (rest conflict); double-booked: P-2206 overlaps COVER on 2026-09-19",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -10.75h rest before COVER on 2026-09-19 (rest conflict); double-booked: P-2206 overlaps COVER on 2026-09-19"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-3569",
+    "reason": "RULE-REST-04: only -10.75h rest before P-2220 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2220 on 2026-09-19",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -10.75h rest before P-2220 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2220 on 2026-09-19"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-5119",
+    "reason": "RULE-REST-04: only -10.75h rest before P-2220 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2220 on 2026-09-19",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -10.75h rest before P-2220 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2220 on 2026-09-19"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-5666",
+    "reason": "RULE-REST-04: only -10.75h rest before P-2220 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2220 on 2026-09-19",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -10.75h rest before P-2220 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2220 on 2026-09-19"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-1594",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-2100",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-3145",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-3897",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-1568",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-5723",
+    "reason": "RULE-QUAL-05: no A320 rating",
+    "rules": [
+     "RULE-QUAL-05"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-QUAL-05",
+      "status": "FAIL",
+      "detail": "RULE-QUAL-05: no A320 rating"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-3271",
+    "reason": "RULE-REST-04: only 11.25h rest before COVER on 2026-09-19 (rest conflict)",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only 11.25h rest before COVER on 2026-09-19 (rest conflict)"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-3249",
+    "reason": "RULE-REST-04: only 11.25h rest before COVER on 2026-09-19 (rest conflict)",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only 11.25h rest before COVER on 2026-09-19 (rest conflict)"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-3619",
+    "reason": "RULE-REST-04: only 11.25h rest before COVER on 2026-09-19 (rest conflict)",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only 11.25h rest before COVER on 2026-09-19 (rest conflict)"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-4999",
+    "reason": "RULE-REST-04: only -7.25h rest before P-2295 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2295 on 2026-09-19",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -7.25h rest before P-2295 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2295 on 2026-09-19"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-2352",
+    "reason": "RULE-REST-04: only -7.25h rest before P-2295 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2295 on 2026-09-19",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -7.25h rest before P-2295 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2295 on 2026-09-19"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-5848",
+    "reason": "RULE-REST-04: only -7.25h rest before P-2295 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2295 on 2026-09-19",
+    "rules": [
+     "RULE-REST-04"
+    ],
+    "verdicts": [
+     {
+      "rule_id": "RULE-REST-04",
+      "status": "FAIL",
+      "detail": "RULE-REST-04: only -7.25h rest before P-2295 on 2026-09-19 (downstream conflict); double-booked: COVER overlaps P-2295 on 2026-09-19"
+     }
+    ]
+   },
+   {
+    "crew_id": "C-5418",
+    "reason": "reserve on-call window 04:00-16:00Z does not cover required report 02:00Z",
+    "rules": [],
+    "verdicts": []
+   },
+   {
+    "crew_id": "C-1329",
+    "reason": "reserve on-call window 04:00-16:00Z does not cover required report 02:00Z",
+    "rules": [],
+    "verdicts": []
+   },
+   {
+    "crew_id": "C-2248",
+    "reason": "reserve on-call window 04:00-16:00Z does not cover required report 02:00Z",
+    "rules": [],
+    "verdicts": []
+   }
+  ]
+ },
+ "expected_choice": {
+  "action": "Assign Cabin Crew C-4809 (reserve callout)",
+  "crew_id": "C-4809",
+  "legal": true,
+  "rules_checked": [
+   "RULE-FDP-01",
+   "RULE-DUTY-02",
+   "RULE-FLT-03",
+   "RULE-REST-04",
+   "RULE-QUAL-05",
+   "RULE-CERT-06",
+   "RULE-BASE-07"
+  ],
+  "cost_inr": 9500,
+  "delay_hours": 0.0,
+  "rank": 1
+ }
+}

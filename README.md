@@ -477,12 +477,38 @@ The two held-out scenarios in `crew-ops-advisor-dataset/internal/` are **locked*
 
 ## 14. Getting started
 
+**Full instructions for macOS and Windows: [`docs/SETUP.md`](docs/SETUP.md).**
+The short version:
+
 ```bash
-git clone git@github.com:shashank-sk17/dcortex-crew-advisor.git
+git clone https://github.com/shashank-sk17/dcortex-crew-advisor.git
 cd dcortex-crew-advisor
-python3 -m venv .venv && source .venv/bin/activate
+git checkout feat/shashank/dev-console
+
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python3 crew-ops-advisor-dataset/validate.py    # should print PASS
+
+python crew-ops-advisor-dataset/validate.py          # prints PASS
+pytest -q                                            # 300 passing
 ```
 
-Then read, in this order: **this README** → [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) → [`docs/RULES.md`](docs/RULES.md) → your own section in §8. Put your first status pulse in [`PROGRESS.md`](PROGRESS.md) when you start.
+Then put the database URL in `.env` (ask Shashank — it is not in the repo) and
+start the console:
+
+```bash
+AGENT_DATA=core AGENT_LLM=anthropic python -m devui.server   # localhost:8420
+```
+
+### Read next
+
+| | |
+|---|---|
+| [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) | **Start here.** What the system does, the five stages, the traps in the data, and what the model is actually for. |
+| [`docs/SETUP.md`](docs/SETUP.md) | macOS and Windows setup, backends, troubleshooting |
+| [`docs/FRONTEND.md`](docs/FRONTEND.md) | **integration guide for the UI** — response shapes, what to render, and the question-vs-answer trap |
+| [`agent/README.md`](agent/README.md) | the advisor layer in detail |
+| [`docs/RULES.md`](docs/RULES.md) | the seven rules and the two conventions that cause silent wrong answers |
+| [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) | if you are building against the API |
+
+Then your own section in §8. Put your first status pulse in
+[`PROGRESS.md`](PROGRESS.md) when you start.

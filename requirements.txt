@@ -1,22 +1,20 @@
-# Runtime
-numpy>=1.26          # cosine index in agent/exemplars.py
+# Python 3.11 or newer (enum.StrEnum, match statements, slots dataclasses).
+# Developed on 3.14; 3.12 recommended.
+
+numpy>=1.26              # cosine index in agent/exemplars.py
+psycopg[binary]>=3.2     # Postgres reads in agent/tools_postgres.py and core/
 
 # Dev
 pytest>=8.0
 
-flask>=3.0
+flask>=3.0               # api/ — the real REST view layer
 flask-cors>=4.0
+python-dotenv>=1.0       # loads DATABASE_URL for api/db.py and agent/tools_postgres.py
 
-# Database
-psycopg[binary]>=3.2
-
-# Environment configuration
-python-dotenv>=1.0
-
-# Deliberately absent for now:
-#   anthropic        — agent/llm.py is a placeholder; no network calls yet
-#   flask            — api/ not started (issue #32)
-#   psycopg[binary]  — Postgres + pgvector for the audit log (DECISIONS.md #14)
+# Deliberately absent:
+#   anthropic   agent/llm.py is a placeholder; the local model goes through
+#               Ollama's HTTP API, which needs no SDK. Add this when the
+#               hosted client lands (issue #24).
 #
-# Deliberately absent for good (DECISIONS.md #1): the dataset is < 700 KB, so
-# no ORM, no Neo4j driver, no Mongo, no Celery.
+# Deliberately absent for good (DECISIONS.md #1): the dataset is under 700 KB,
+# so no ORM, no Neo4j driver, no Mongo, no Celery.

@@ -3,9 +3,10 @@
 The natural-language layer of the Crew Ops Advisor. It turns a controller's
 question into tool calls, proves the answer is sourced, and explains it back.
 
-> **No network calls are made anywhere in this package.** `PlaceholderLLM`
-> returns canned responses so the whole pipeline runs — and all 116 tests pass —
-> with no API key, no SDK, and no `core/`. See [§7](#7-what-is-real-and-what-is-a-placeholder).
+> **Everything here runs without a key.** `PlaceholderLLM` returns canned
+> responses so the whole pipeline works, and the suite passes, with no API key
+> and no `core/`. A real model is a config change — see
+> [§7](#7-what-is-real-and-what-is-a-placeholder).
 
 ```bash
 python -m agent.cli "Who is on reserve at BLR on 2026-09-15?"
@@ -98,6 +99,11 @@ architecture; a cargo-culted swarm diagram is not. (`DECISIONS.md` #13)
 `route()` tries ~15 ordered patterns before it will consider a model call.
 **All 38 gold questions route to dCortex's own tier label — 38/38**, with no
 model involved, and `test_router.py` fails on the first regression.
+
+That number is *memorisation*, and the README says so: those patterns were
+tuned on those questions. On phrasings a controller would actually use, regex
+alone scores 2/10 and the model 6/10 — which is the whole reason the model is
+here. Quote both figures or neither.
 
 That matters for three reasons: the common path costs nothing, it is
 reproducible, and every decision reports which rule fired (`matched_rule`), so
@@ -209,8 +215,13 @@ and puts the reason in `unknowns`. It never ships the unsourced draft.
 | `schemas.py` | **Real.** Mirrors `docs/API_CONTRACT.md`. |
 | `exemplars.py` | **Real**, with `HashingEmbedder` standing in for a sentence model. |
 | `advisor.py` | **Real** orchestration; drives whatever `LLM` and `ToolPort` it is given. |
-| `llm.py` | **Placeholder.** `AnthropicLLM` raises `NotImplementedError`. |
-| `tools.py` | **Partial.** `lookup` and `explain_rule` read the real dataset; the rest raise `ToolError`. |
+| `llm.py` | Placeholder client + the `LLM` protocol. |
+| `llm_anthropic.py` | **Real.** `claude-opus-5`, prompt caching, native tool blocks. |
+| `llm_groq.py` | **Real.** Any OpenAI-compatible provider. |
+| `llm_ollama.py` | **Real.** Local models, with argument repair. |
+| `conversation.py` | **Real.** Multi-turn state, follow-ups, confirmations. |
+| `tools.py` | Tool schemas, `ToolPort`, argument validation, filter guard rails. |
+| `tools_postgres.py` / `tools_fixtures.py` | **Real.** Read-only DB, and answer-key fixtures. |
 
 Two things are deliberate here.
 
@@ -224,7 +235,7 @@ handles it correctly: confidence drops to `LOW` and the reason surfaces in
 **Both swap points are protocols, not imports.** Nothing depends on a vendor
 SDK or on `core/` — only on `agent.llm.LLM` and `agent.tools.ToolPort`.
 
-### Wiring in the real model (issue #24)
+### Adding another model provider
 
 Implement `AnthropicLLM.complete` and `.stream` against the Messages API,
 keeping the return types unchanged. The docstring in `llm.py` lists what
@@ -257,11 +268,15 @@ agent/
 ├── explainer.py      answer object → prose, citations
 ├── advisor.py        the loop
 ├── llm.py            LLM port + placeholder client   ← swap point
+├── conversation.py   multi-turn state — follow-ups, confirmations, decisions
+├── llm_anthropic.py  claude-opus-5 with prompt caching   ← default
+├── llm_groq.py       any OpenAI-compatible provider
+├── llm_ollama.py     local models + argument repair
 ├── cli.py            python -m agent.cli
 ├── prompts/
 │   ├── __init__.py   assembly + per-intent guidance
 │   └── system.md     role, rulebook, rate card, house style
-└── tests/            116 tests, no network, no key
+└── tests/            300 tests across the repo
 ```
 
 ## 9. Design rules for anyone editing this
