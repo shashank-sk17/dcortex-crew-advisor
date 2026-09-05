@@ -4,6 +4,9 @@ import { AgentEvent } from '../models/agent-events';
 import { MockAdvisorService } from './mock-advisor.service';
 import { environment } from '../../environments/environment';
 
+/** Matches the Anthropic client timeout in agent/llm_anthropic.py. */
+const ASK_TIMEOUT_MS = 120_000;
+
 export interface AskOptions {
   weights?: Record<string, number>;
   asOf?: string;
@@ -39,10 +42,44 @@ export class AdvisorService {
     return this.ask(prompt, opts);
   }
 
+  /**
+   * The real advisor holds ONE process-wide conversation (agent/conversation.py,
+   * uncapped history) — docs/FRONTEND.md §10: "today it is one conversation per
+   * server process, cleared by GET /reset". Every question anyone has asked this
+   * process keeps accruing into the same transcript, so latency climbs (and can
+   * eventually error) the longer a session runs. Best-effort: the real endpoint
+   * may not exist everywhere yet (e.g. Gayathri's api/app.py, issue #32), so a
+   * failure here is silent — the caller still clears its own local turn history.
+   */
+  reset(): void {
+    if (environment.useMock) return;
+    fetch(`${advisorBase()}/api/v1/reset`).catch(() => {});
+  }
+
   private askJson(url: string, body: Record<string, unknown>): Observable<AgentEvent> {
     return new Observable<AgentEvent>((subscriber) => {
       const ctrl = new AbortController();
       const startedAt = performance.now();
+
+      // The real advisor is a single request that can take 2-25s (docs/FRONTEND.md
+      // §11) — nothing else is emitted until it resolves, so without this the turn
+      // sits completely blank for the entire wait. Bump the wording once it's
+      // clearly taking a while, so a slow tier-3 question doesn't look stuck.
+      subscriber.next({ type: 'status', text: 'Consulting the advisor…' });
+      const slowNotice = setTimeout(() => {
+        subscriber.next({ type: 'status', text: 'Still working — this one needs a few tool calls…' });
+      }, 6000);
+
+      // fetch() has no timeout of its own, so without this a stalled request
+      // spins forever. 120s matches the Anthropic client's own timeout in
+      // agent/llm_anthropic.py — past that the model call has already given up,
+      // so there is nothing left to wait for.
+      let timedOut = false;
+      const deadline = setTimeout(() => {
+        timedOut = true;
+        ctrl.abort();
+      }, ASK_TIMEOUT_MS);
+      const stopTimers = () => { clearTimeout(slowNotice); clearTimeout(deadline); };
 
       (async () => {
         try {
@@ -53,6 +90,7 @@ export class AdvisorService {
             signal: ctrl.signal,
           });
           const json = await res.json().catch(() => null);
+          stopTimers();
 
           if (!json) {
             subscriber.next({ type: 'error', message: `Advisor returned ${res.status}` });
@@ -103,14 +141,20 @@ export class AdvisorService {
           });
           subscriber.complete();
         } catch {
-          if (!ctrl.signal.aborted) {
+          stopTimers();
+          if (timedOut) {
+            subscriber.next({
+              type: 'error',
+              message: `The advisor did not answer within ${ASK_TIMEOUT_MS / 1000}s. It may still be working — retry, or start a new chat if the conversation has grown long.`,
+            });
+          } else if (!ctrl.signal.aborted) {
             subscriber.next({ type: 'error', message: 'Lost connection to the advisor' });
           }
           subscriber.complete();
         }
       })();
 
-      return () => ctrl.abort();
+      return () => { stopTimers(); ctrl.abort(); };
     });
   }
 }

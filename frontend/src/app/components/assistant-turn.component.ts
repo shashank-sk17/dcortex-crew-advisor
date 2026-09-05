@@ -66,7 +66,7 @@ export class AssistantTurnComponent {
    * An `awaiting` turn never does: it's a question, not a finding (§2). */
   get hasOptions(): boolean {
     if (this.turn.awaiting) return false;
-    return (this.replacement?.options.length ?? 0) > 0 || (this.consequence?.options.length ?? 0) > 0;
+    return (this.replacement?.options?.length ?? 0) > 0 || (this.consequence?.options?.length ?? 0) > 0;
   }
 
   /**

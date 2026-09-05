@@ -10,7 +10,7 @@
       <div class="stat"><span class="stat__n">{{ blast.passengers }}</span><span class="stat__l">passengers</span></div>
     </div>
     <ul class="edges">
-      @for (e of blast.edges; track e.from + e.to) {
+      @for (e of blast.edges ?? []; track e.from + e.to) {
         <li class="edge" [attr.data-kind]="e.kind">
           <span class="mono">{{ e.from }}</span>
           <span class="edge__arrow">→</span>

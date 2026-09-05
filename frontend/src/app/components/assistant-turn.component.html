@@ -14,7 +14,7 @@
     @if (turn.elapsedMs != null) { <span class="chip chip--muted mono">{{ turn.elapsedMs }}ms</span> }
   </div>
 
-  @if (turn.status) { <div class="status">{{ turn.status }}</div> }
+  @if (turn.status) { <div class="status"><span class="spinner"></span> {{ turn.status }}</div> }
   @if (turn.error) { <div class="error">{{ turn.error }}</div> }
 
   @if (turn.abstain) {
@@ -32,15 +32,15 @@
   <!-- 1. ANSWER -->
   @if (!awaiting && lookup) { <app-tier1-table [data]="lookup" /> }
   @if (!awaiting && replacement) {
-    @if (replacement.uncovered_flights.length) { <app-impact-card [data]="replacement" /> }
-    @if (replacement.options.length || replacement.excluded.length) {
-      <app-options-card [options]="replacement.options" [nearMisses]="replacement.near_misses"
-                        [excluded]="replacement.excluded" [decidedCrewId]="decision()?.chosen_option?.crew_id ?? null"
+    @if ((replacement.uncovered_flights ?? []).length) { <app-impact-card [data]="replacement" /> }
+    @if ((replacement.options ?? []).length || (replacement.excluded ?? []).length) {
+      <app-options-card [options]="replacement.options ?? []" [nearMisses]="replacement.near_misses ?? []"
+                        [excluded]="replacement.excluded ?? []" [decidedCrewId]="decision()?.chosen_option?.crew_id ?? null"
                         [deciding]="deciding()" (accept)="acceptOption($event)" />
     }
   }
   @if (!awaiting && consequence) {
-    <app-options-card [options]="consequence.options" [nearMisses]="[]" [excluded]="[]"
+    <app-options-card [options]="consequence.options ?? []" [nearMisses]="[]" [excluded]="[]"
                       [decidedCrewId]="decision()?.chosen_option?.crew_id ?? null"
                       [deciding]="deciding()" (accept)="acceptOption($event)" />
   }

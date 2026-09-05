@@ -101,7 +101,7 @@ export interface AnswerEvent {
 export interface AbstainEvent {
   type: 'abstain';
   reason: string;
-  needed: string[];
+  needed?: string[];
 }
 
 /**
@@ -149,14 +149,21 @@ export interface Citation {
   source?: string;
 }
 
+/**
+ * A tier-1 lookup. The real agent (agent/schemas.py) sends only
+ * `{kind, rows}` with `rows: list[dict]`; the mock and answer-key fixtures
+ * send arrays-of-cells plus title/columns/count/citations. Everything except
+ * `kind`/`rows` is optional, and `rows` accepts both shapes —
+ * Tier1TableComponent normalises them before the template touches either.
+ */
 export interface LookupAnswer {
   kind: 'lookup';
-  title: string;
+  title?: string;
   columns?: string[];
-  rows: (string | number)[][];
+  rows: (string | number)[][] | Record<string, unknown>[];
   scalar?: string;
-  count: number;
-  citations: string[];
+  count?: number;
+  citations?: string[];
 }
 
 export interface RuleVerdict {
@@ -210,13 +217,13 @@ export interface ReplacementAnswer {
   kind: 'replacement';
   /** The agent's pick, when it has one — docs/FRONTEND.md §5 step 2: lead with this. */
   recommended?: Option | null;
-  uncovered_flights: string[];
-  at_risk_flights: string[];
-  passengers_affected: number;
-  funnel: FunnelStage[];
-  options: Option[];
-  near_misses: Option[];
-  excluded: ExcludedCandidate[];
+  uncovered_flights?: string[];
+  at_risk_flights?: string[];
+  passengers_affected?: number;
+  funnel?: FunnelStage[];
+  options?: Option[];
+  near_misses?: Option[];
+  excluded?: ExcludedCandidate[];
   cancellation_multiple?: number;
   next_tier_cost_inr?: number;
   next_tier_premium_inr?: number;
@@ -240,12 +247,12 @@ export interface BlastRadius {
   flights: number;
   aircraft: number;
   passengers: number;
-  edges: BlastEdge[];
+  edges?: BlastEdge[];
 }
 
 export interface ConsequenceAnswer {
   kind: 'consequence';
-  options: Option[];
+  options?: Option[];
   blast_radius: BlastRadius;
   world_diff?: Record<string, unknown>;
   joint_plan?: { total_cost_inr: number; assignments?: Record<string, unknown> };

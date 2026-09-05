@@ -27,7 +27,7 @@ export class OptionsCardComponent {
   @Input() deciding = false;
   @Output() accept = new EventEmitter<Option>();
 
-  entries(o: Record<string, number>): [string, number][] {
-    return Object.entries(o);
+  entries(o: Record<string, number> | undefined): [string, number][] {
+    return Object.entries(o ?? {});
   }
 }

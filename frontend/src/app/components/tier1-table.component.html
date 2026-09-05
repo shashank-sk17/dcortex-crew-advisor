@@ -1,18 +1,18 @@
 <div class="card">
-  <div class="card__title">{{ data.title }} · {{ data.count }} rows</div>
+  <div class="card__title">{{ data.title || 'Lookup' }} · {{ count }} rows</div>
   @if (data.scalar) {
     <div class="scalar mono">{{ data.scalar }}</div>
   }
-  @if (data.rows.length) {
+  @if (rows.length) {
     <details class="wrap">
-      <summary class="wrap__summary">Show {{ data.count }} row{{ data.count === 1 ? '' : 's' }}</summary>
+      <summary class="wrap__summary">Show {{ count }} row{{ count === 1 ? '' : 's' }}</summary>
       <div class="wrap__table">
         <table>
-          @if (data.columns && data.columns.length) {
-            <thead><tr>@for (c of data.columns; track c) { <th>{{ c }}</th> }</tr></thead>
+          @if (columns.length) {
+            <thead><tr>@for (c of columns; track c) { <th>{{ c }}</th> }</tr></thead>
           }
           <tbody>
-            @for (row of data.rows; track $index) {
+            @for (row of rows; track $index) {
               <tr>@for (cell of row; track $index) { <td>{{ cell }}</td> }</tr>
             }
           </tbody>
@@ -20,8 +20,10 @@
       </div>
     </details>
   }
-  <div class="cites">
-    <span class="muted">source:</span>
-    @for (c of data.citations; track c) { <span class="chip chip--muted mono">{{ c }}</span> }
-  </div>
+  @if (citations.length) {
+    <div class="cites">
+      <span class="muted">source:</span>
+      @for (c of citations; track c) { <span class="chip chip--muted mono">{{ c }}</span> }
+    </div>
+  }
 </div>
