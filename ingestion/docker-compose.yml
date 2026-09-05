@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: crewops-postgres
+    environment:
+      POSTGRES_USER: crewops
+      POSTGRES_PASSWORD: crewops
+      POSTGRES_DB: crewops
+    ports:
+      # host:container -- 5433 to avoid clashing with any local Postgres on the default 5432
+      - "5433:5432"
+    volumes:
+      - crewops_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crewops -d crewops"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  crewops_pg_data:

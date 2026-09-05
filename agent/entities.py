@@ -35,6 +35,16 @@ STATION_RE = re.compile(r"\b[A-Z]{3}\b")
 ISO_DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 TIME_RE = re.compile(r"\b(\d{1,2}):(\d{2})\s*Z?\b", re.I)
 
+# Boarding-gate labels, per mock_data/generate_boarding_gates.py: "<station>-G<n>".
+GATE_RE = re.compile(r"\b([A-Z]{3}-G\d+)\b", re.I)
+
+# "delayed by 90 minutes", "delayed 2 hours", "a 45 min delay" -> minutes.
+DELAY_RE = re.compile(
+    r"\bdelay(?:ed)?\b[^.?!\n]{0,20}?(\d+(?:\.\d+)?)\s*(hours?|hrs?|h\b|minutes?|mins?|m\b)"
+    r"|(\d+(?:\.\d+)?)\s*(hours?|hrs?|h\b|minutes?|mins?|m\b)[^.?!\n]{0,20}?\bdelay(?:ed)?\b",
+    re.I,
+)
+
 _MONTHS = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
 _MONTHS |= {m.lower(): i for i, m in enumerate(calendar.month_name) if m}
 _MONTH_ALT = "|".join(sorted(_MONTHS, key=len, reverse=True))
@@ -91,6 +101,8 @@ class Entities:
     times: list[str] = field(default_factory=list)
     roles: list[str] = field(default_factory=list)
     cert_types: list[str] = field(default_factory=list)
+    gate_numbers: list[str] = field(default_factory=list)
+    delay_minutes: float | None = None
     horizon_days: int | None = None
     names: list[str] = field(default_factory=list)
     """Words that look like a crew member's name. Candidates only — nothing
@@ -114,6 +126,10 @@ class Entities:
     @property
     def primary_date(self) -> str | None:
         return self.dates[0] if self.dates else None
+
+    @property
+    def primary_gate(self) -> str | None:
+        return self.gate_numbers[0] if self.gate_numbers else None
 
 
 def _dedupe(items: list[str]) -> list[str]:
@@ -238,6 +254,22 @@ def extract_times(text: str) -> list[str]:
     return _dedupe(out)
 
 
+def extract_delay_minutes(text: str) -> float | None:
+    """A hypothetical delay duration, in minutes, when one is stated.
+
+    >>> extract_delay_minutes("if DX401 is delayed by 90 minutes")
+    90.0
+    >>> extract_delay_minutes("a 2 hour delay on DX401")
+    120.0
+    """
+    m = DELAY_RE.search(text)
+    if not m:
+        return None
+    value_s, unit = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+    value, unit = float(value_s), unit.lower()
+    return value * 60 if unit.startswith("h") else value
+
+
 # --------------------------------------------------------------------------
 # Main entry point
 # --------------------------------------------------------------------------
@@ -269,6 +301,8 @@ def extract(text: str) -> Entities:
     certs = [c.lower().replace(" ", "_").replace("license", "licence")
              for c in CERT_RE.findall(text)]
 
+    gates = [g.upper() for g in GATE_RE.findall(text)]
+
     return Entities(
         crew_ids=_dedupe(CREW_RE.findall(text)),
         pairing_ids=_dedupe(PAIRING_RE.findall(text)),
@@ -282,6 +316,8 @@ def extract(text: str) -> Entities:
         times=extract_times(text),
         roles=roles,
         cert_types=_dedupe(certs),
+        gate_numbers=_dedupe(gates),
+        delay_minutes=extract_delay_minutes(text),
         horizon_days=extract_horizon(text),
         names=extract_names(text),
     )

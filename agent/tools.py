@@ -216,6 +216,48 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "check_gate",
+        "description": (
+            "Verify a claim about a flight's boarding gate against the "
+            "boarding-gate dataset, or inspect gate occupancy directly. "
+            "Name the flight by flight_id, or flight_no+date (a wrong date is "
+            "reported as such, naming the dates it actually operates). Pass "
+            "boarding_gate_number to check it against the actual assignment, "
+            "or by itself (no flight) with at_utc to ask who currently holds "
+            "that gate. Pass delay_minutes to test whether delaying this "
+            "flight's departure would collide with whatever is booked into "
+            "the same gate afterwards. Returns the actual assignment and "
+            "window, never a bare boolean."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "flight_id": {
+                    "type": "string",
+                    "pattern": "^DX[0-9]{3}-[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                },
+                "flight_no": {
+                    "type": "string", "pattern": "^DX[0-9]{3}$",
+                    "description": "Pass `date` alongside it — a flight number alone is ambiguous.",
+                },
+                "date": {"type": "string", "description": "ISO date, with flight_no"},
+                "boarding_gate_number": {
+                    "type": "string",
+                    "description": "e.g. 'BLR-G1', as claimed by the controller.",
+                },
+                "delay_minutes": {
+                    "type": "number",
+                    "description": "Hypothetical departure delay, for gate-conflict checks",
+                },
+                "at_utc": {
+                    "type": "string",
+                    "description": "ISO-8601 UTC instant, for an occupancy-only query",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "explain_rule",
         "description": "The text, parameters and plain-English gloss of one rule.",
         "input_schema": {
@@ -456,6 +498,9 @@ class ToolPort(Protocol):
     def simulate(self, event: dict[str, Any]) -> dict[str, Any]: ...
     def joint_plan(self, events: list[dict[str, Any]]) -> dict[str, Any]: ...
     def explain_rule(self, rule_id: str) -> dict[str, Any]: ...
+    def check_gate(self, flight_id: str | None = None, flight_no: str | None = None,
+                   date: str | None = None, boarding_gate_number: str | None = None,
+                   delay_minutes: float = 0.0, at_utc: str | None = None) -> dict[str, Any]: ...
 
 
 class ToolError(RuntimeError):
@@ -595,6 +640,11 @@ class PlaceholderToolPort:
 
     def joint_plan(self, events: list[dict[str, Any]]) -> dict[str, Any]:
         raise ToolError("INTERNAL", f"joint_plan: {self._NOT_YET}")
+
+    def check_gate(self, flight_id: str | None = None, flight_no: str | None = None,
+                   date: str | None = None, boarding_gate_number: str | None = None,
+                   delay_minutes: float = 0.0, at_utc: str | None = None) -> dict[str, Any]:
+        raise ToolError("INTERNAL", f"check_gate: {self._NOT_YET}")
 
 
 # --------------------------------------------------------------------------

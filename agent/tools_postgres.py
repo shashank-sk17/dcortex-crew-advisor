@@ -332,3 +332,8 @@ class PostgresToolPort:
 
     def joint_plan(self, events: list[dict[str, Any]]) -> dict[str, Any]:
         raise ToolError("INTERNAL", f"joint_plan: {self._NOT_YET}")
+
+    def check_gate(self, flight_id: str | None = None, flight_no: str | None = None,
+                   date: str | None = None, boarding_gate_number: str | None = None,
+                   delay_minutes: float = 0.0, at_utc: str | None = None) -> dict[str, Any]:
+        raise ToolError("INTERNAL", f"check_gate: {self._NOT_YET}")

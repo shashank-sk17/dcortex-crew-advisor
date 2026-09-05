@@ -84,6 +84,7 @@ _INTENT_TOOLS: dict[Intent, tuple[str, ...]] = {
     Intent.DRAFT_NOTIFICATION: ("notification_brief", "lookup"),
     Intent.LOOKUP_DUTY_CLOCK: ("duty_clock",),
     Intent.EXPLAIN_RULE: ("explain_rule",),
+    Intent.CHECK_GATE: ("check_gate",),
     Intent.CHECK_LEGALITY: ("check_legality", "explain_rule"),
     Intent.FIND_REPLACEMENT: ("find_options", "check_legality"),
     Intent.IMPACT_OF_EVENT: ("ripple", "lookup"),
@@ -116,6 +117,7 @@ MISSING_FOR_INTENT: dict[Intent, str] = {
     Intent.RESOLVE_ILLEGAL: "the crew member and date whose assignment is in question",
     Intent.EXPLAIN_RULE: "a rule id, e.g. RULE-DUTY-02",
     Intent.LOOKUP_DUTY_CLOCK: "a crew id, e.g. C-1042",
+    Intent.CHECK_GATE: "a flight (id, or number with date) and/or a boarding gate number",
     # An unfiltered crew lookup is 150 rows, which is not an answer to
     # anything a controller actually asked.
     Intent.LOOKUP_CREW: ("something to narrow by — a crew id, a rank, a base, "
@@ -246,6 +248,21 @@ def seed_calls(route: Route) -> list[ToolCall]:
         case Intent.LOOKUP_FLIGHT:
             add("lookup", entity="flights", filters=_flight_filters(ents))
 
+        case Intent.CHECK_GATE if (ents.flight_ids or ents.flight_nos
+                                    or ents.primary_gate):
+            # "at 20:00Z on 2026-09-14" names a specific instant for an
+            # occupancy check; without combining the two the tool falls back
+            # to the dataset's default snapshot time, silently answering a
+            # different question than the one asked.
+            at_utc = (f"{ents.primary_date}T{ents.times[0]}:00Z"
+                      if ents.times and ents.primary_date else None)
+            add("check_gate",
+                flight_id=ents.flight_ids[0] if ents.flight_ids else None,
+                flight_no=ents.flight_nos[0] if ents.flight_nos else None,
+                date=ents.primary_date,
+                boarding_gate_number=ents.primary_gate,
+                delay_minutes=ents.delay_minutes or 0.0,
+                at_utc=at_utc)
         case Intent.LOOKUP_CERT:
             add("lookup", entity="certifications", filters=_cert_filters(ents))
 
@@ -386,6 +403,21 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
     """
     results = {e.tool: e.result for e in trace if e.result is not None}
 
+    if route.intent is Intent.CHECK_GATE:
+        # check_gate is a single fact-check, not a listing: unlike a plain
+        # entity lookup, its result depends on the *arguments* (delay_minutes,
+        # at_utc), which the seed fills from the parsed question but a
+        # follow-up model call cannot see (the tool loop does not replay prior
+        # trace into the model's messages). In a multi-turn conversation the
+        # model sometimes re-calls it anyway to reconcile earlier turns, with
+        # different args -- producing a second, genuinely different result
+        # that the row-accumulating LOOKUP branch below would otherwise merge
+        # in as an extra "record", corrupting a single yes/no answer into a
+        # multi-row listing. The seed's call is the one that actually answers
+        # the literal question, so it wins regardless of what ran after it.
+        first = next((e.result for e in trace
+                     if e.tool == "check_gate" and e.result is not None), None)
+        return LookupAnswer(rows=[first] if first else [])
     if route.intent is Intent.DRAFT_NOTIFICATION:
         brief = results.get("notification_brief") or {}
         return NotificationAnswer(
