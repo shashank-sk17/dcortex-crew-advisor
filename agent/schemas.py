@@ -233,6 +233,17 @@ class AdvisorResponse:
     unknowns: list[str] = field(default_factory=list)
     trace: list[TraceEntry] = field(default_factory=list)
 
+    awaiting: str | None = None
+    """Set when this answer is a question back to the controller.
+
+    `"confirmation"` — an id or rank needs confirming before anything runs.
+    `"detail"`       — something is missing, e.g. which date.
+
+    A client renders these as a prompt expecting a reply, not as a finding.
+    Without it the only signal was the prefix on a trace error, which is not
+    something a UI should have to parse.
+    """
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["tier"] = int(self.tier)

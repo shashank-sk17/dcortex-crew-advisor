@@ -98,7 +98,7 @@ misspelled.
 pytest -q
 ```
 
-**241 passing.** Roughly ten of those talk to the database and skip
+**300 passing.** Roughly twenty of those talk to the database and skip
 automatically if `DATABASE_URL` is missing, so a clean run without the URL
 shows skips rather than failures.
 
@@ -142,33 +142,41 @@ set AGENT_DATA=core && set AGENT_LLM=ollama && python -m devui.server
 | `AGENT_LLM` | |
 |---|---|
 | `placeholder` *(default)* | No model. Answers come from templates — terse but correct. |
-| **`groq`** | **Hosted, fastest. Needs a key — see below.** |
-| `ollama` | Local model. Needs step 5, and a 5 GB download. |
+| **`anthropic`** | **Recommended. `claude-opus-5`. Needs a key.** |
+| `groq` | Hosted, free tier, rate limited. |
+| `ollama` | Local. Needs step 5 and a 5 GB download. |
 
-### Groq (recommended)
+### Anthropic (recommended)
 
 Ask Shashank for the key and add it to the same `.env`:
 
 ```
-GROQ_API_KEY=gsk_...
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 Then:
 
 ```bash
-AGENT_DATA=core AGENT_LLM=groq python -m devui.server           # macOS/Linux
+AGENT_DATA=core AGENT_LLM=anthropic python -m devui.server      # macOS/Linux
 ```
 ```powershell
-$env:AGENT_DATA="core"; $env:AGENT_LLM="groq"; python -m devui.server
+$env:AGENT_DATA="core"; $env:AGENT_LLM="anthropic"; python -m devui.server
 ```
 
-Model is `qwen/qwen3.6-27b`; override with `GROQ_MODEL`. Sub-second when it is
-not rate limited.
+Model is `claude-opus-5`; override with `ANTHROPIC_MODEL`. Around two seconds
+for a lookup, longer for tier 3 where several model calls are needed.
 
-**The free tier allows 7,000 input tokens per minute**, and one tier-2 question
-runs about 2,400, so roughly three questions a minute. The client retries
-automatically using the delay Groq reports, which is why an occasional answer
-takes twenty seconds instead of one. That is the wait, not the thinking.
+The system prompt and tool schemas are byte-identical on every call, so they
+are cached — about **80% of input tokens come from cache**, which is what makes
+a multi-call tool loop affordable.
+
+### Groq (alternative)
+
+`GROQ_API_KEY=gsk_...`, then `AGENT_LLM=groq`. Model `qwen/qwen3.6-27b`, 5/5 on
+tool calls. **The free tier allows 7,000 input tokens per minute** and a tier-2
+question runs about 1,400, so expect throttling on a busy session — the client
+retries using the delay Groq reports, which is why an answer occasionally takes
+twenty seconds.
 
 The status bar at the top of the console always names which is live, so you
 never have to guess what produced an answer.
@@ -221,6 +229,19 @@ rail.
 | `If C-2087 covers P-2291, does any rule breach?` | Rule-by-rule verdict with the numbers |
 | `Both A320 captains are sick at 00:30Z on 18 Sep. Give the optimal joint plan.` | Joint assignment, ₹42,500, 20 equal-cost ties |
 
+Then keep the thread going — the console holds a conversation:
+
+| Follow-up | |
+|---|---|
+| `why not C-2087?` | the exclusion reason, no new tool call |
+| `what about C-2210?` | legal, ranked #5, ₹41,200 and a 3h delay |
+| `go with C-3310` | recorded as the decision |
+
+And try getting it wrong on purpose. `C-1024 is sick` (a transposed digit),
+`FO C-2087` (the wrong rank — which is what dCortex's own brief says), or
+`move C-2087 onto DX412` (a flight that runs on three days). Each should ask
+you a question rather than guess, and the next message answers it.
+
 `#q=...` in the URL re-runs a question, so you can paste a failing case into
 Slack and someone else reproduces it exactly.
 
@@ -258,6 +279,6 @@ changes only need the reload.
 ## Where to read next
 
 1. [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md) — what the system actually does and why
-2. [`../agent/README.md`](../agent/README.md) — the advisor layer in detail
-3. [`RULES.md`](RULES.md) — the seven rules and the traps in them
-4. [`API_CONTRACT.md`](API_CONTRACT.md) — if you're building against the API
+2. [`FRONTEND.md`](FRONTEND.md) — **if you are building the UI, start here**
+3. [`../agent/README.md`](../agent/README.md) — the advisor layer in detail
+4. [`RULES.md`](RULES.md) — the seven rules and the traps in them

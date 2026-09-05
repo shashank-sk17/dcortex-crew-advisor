@@ -554,7 +554,10 @@ class Advisor:
         if turn.awaiting_controller:
             asked = next(e for e in turn.trace
                          if e.error and e.error.startswith(CLARIFYING))
-            response.narrative = asked.error.split(":", 1)[-1].strip()
+            code, _, detail = asked.error.partition(":")
+            response.narrative = detail.strip()
+            response.awaiting = ("confirmation" if code == "NEEDS_CONFIRMATION"
+                                 else "detail")
             response.confidence = Confidence.HIGH
             return response
 

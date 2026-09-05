@@ -151,9 +151,11 @@ environment variable.
 | `core/` rules engine | **Real.** All seven rules, verified against dCortex's answer keys. |
 | `agent/` router, verifier, explainer | **Real.** |
 | Postgres reads | **Real.** Read-only connections; a write raises at the server. |
-| Hosted model | **Real** via Groq (`qwen/qwen3.6-27b`), 5/5 on tool calls. |
-| Local model | **Real** via Ollama, slower and weaker at arguments — see §8. |
-| Anthropic client | **Placeholder.** `AnthropicLLM` raises `NotImplementedError` (issue #24). |
+| Anthropic | **Real.** `claude-opus-5`, 5/5 on tool calls, ~2s, 80% of input served from cache. |
+| Groq | **Real.** `qwen/qwen3.6-27b`, 5/5 — free tier is 7,000 input tokens/min. |
+| Ollama | **Real.** Local, slower and weaker at arguments — see §8. |
+| Conversation | **Real.** Multi-turn state, follow-ups, confirmations. |
+| Entity resolution | **Real.** Near-match suggestions, rank checks against the roster. |
 | `api/` production API | **Not started** (issue #32). `devui/` is a dev tool. |
 
 ### Proof, not assertion
@@ -167,7 +169,7 @@ The engine is scored against dCortex's published keys:
 | S6 two simultaneous sick calls | 13/13 both aircraft · ₹42,500 joint total · 20 equal-cost ties |
 | Q18 legality detail | reproduces the key's wording verbatim |
 
-`pytest -q` → 241 passing.
+`pytest -q` → 300 passing.
 
 ---
 
@@ -202,6 +204,17 @@ invents an option the desk does not have.
 interchangeable pairings. Never compare `crew_id` when scoring it — check the
 total and feasibility, or you fail 19 of 20 correct answers.
 
+**`passengers_affected` is seat capacity, not bookings.** The dataset has no
+load data — the only relevant field anywhere is `seats`. dCortex's key uses the
+same figure under the same name, so the object keeps it, but the UI should say
+"seats at risk". 486 across three A320s is exactly 100% load, which nobody
+believes.
+
+**dCortex's own problem statement says "FO C-2087" and C-2087 is a Captain.**
+Their dataset README flags it as an erratum. Someone reading their brief will
+type it, so a stated rank is checked against the roster and queried rather than
+accepted.
+
 ---
 
 ## 8. What the model is actually for
@@ -231,9 +244,69 @@ string `"BLR->BOM"` as a pairing id even after being told the format twice.
 step below the trust boundary rather than prompting harder.** Flight → pairing
 resolution is deterministic now for exactly this reason.
 
+### Where the verifier cannot help
+
+Four times now the model has produced something false that the gate passed,
+because the fabrication carried no number or identifier to check:
+
+1. Asked what RULE-DUTY-02 *says*, it warned about a crew who had exceeded
+   their limits. There was no crew.
+2. It returned its entire chain of thought as the answer — every figure in it
+   sourced, none of it a response.
+3. It rewrote "there is no crew C-1045" into "C-1045 isn't rostered this
+   week", a different claim about someone who does not exist.
+4. Asked which of three dates a controller meant, it answered on their behalf
+   and narrated whichever it preferred — so the same question gave different
+   answers on different runs.
+
+**The gate proves claims are sourced. It cannot prove the prose describes what
+happened.** Every one of these was fixed by taking work away from the model:
+tier-1 answers are not polished, reasoning is suppressed at the source, tool
+errors are rendered verbatim, and a clarifying question ends the turn.
+
 ---
 
-## 9. If you are changing something
+## 9. Talking to it
+
+`Advisor.ask()` is stateless by design. `Conversation` (in
+`agent/conversation.py`) holds the session, which is what makes it an advisor
+rather than a report generator:
+
+```
+"C-1042 is sick"      -> ranked options
+"why not C-2087?"     -> DUTY-02, over by 1h20m on the 15th
+"what about C-2210?"  -> legal, ranked #5, ₹41,200 and a 3h delay
+"go with C-3310"      -> recorded
+```
+
+Most of that costs nothing. A candidate search already returns every excluded
+crew member with their reason, so "why not X" is a lookup into the answer from
+a moment ago rather than a new search.
+
+Two rules hold here. **Context resolves against the last turn that produced
+candidates**, not the previous turn — by the time a controller decides they
+may have asked two clarifying questions. And **decisions are recorded, not
+executed**: a dearer choice is flagged and allowed, a choice the rules engine
+excluded is refused with the breach quoted. The desk decides.
+
+### Questions the system asks back
+
+Three things stop a turn and put a question to the controller, rather than
+guessing:
+
+| | |
+|---|---|
+| An id that does not exist but has a near match | *"There is no C-1024. Did you mean C-1042 (Captain, BLR)?"* |
+| A stated rank the roster contradicts | *"C-2087 is a Captain, not a First Officer."* |
+| An ambiguous reference | *"DX412 operates on three dates. Which do you mean?"* |
+
+These come back with `awaiting` set, and the next turn answers them. **A near
+match is never substituted silently** — C-1042 and C-1024 differ by one
+transposed digit, and one of them is nobody.
+
+---
+
+## 10. If you are changing something
 
 1. **Never let the model compute.** Needing it to add two numbers means a tool
    is missing. This binds the *renderer* too — a template that printed
@@ -245,5 +318,9 @@ resolution is deterministic now for exactly this reason.
    contract; renaming one breaks scoring silently.
 4. **A tool that cannot answer raises.**
 5. **Ties are first-class.** Where several plans cost the same, say so.
-6. **Run `pytest -q` before pushing.** The answer-key tests are what let you
-   refactor `core/` and know immediately if you broke it.
+6. **Run `pytest -q` before pushing** — and check its exit code rather than
+   piping it through `tail`, which masks it. The answer-key tests are what let
+   you refactor `core/` and know immediately if you broke it.
+7. **Nothing fails silently.** An empty answer is a bug: if no tool ran, say
+   what was understood and what is missing. "No data was returned" reads as
+   "nothing is wrong", which is the one thing this must never imply.

@@ -100,7 +100,7 @@ Both seams are protocols, so the console drives any combination via env vars.
 
 ```bash
 python -m devui.server                                   # placeholder + vendored JSON
-AGENT_LLM=ollama  python -m devui.server                 # local Llama + JSON
+AGENT_LLM=anthropic AGENT_DATA=core python -m devui.server     # recommended
 AGENT_DATA=postgres python -m devui.server               # placeholder + Neon
 AGENT_LLM=ollama AGENT_DATA=postgres python -m devui.server   # both
 OLLAMA_MODEL=qwen3:8b AGENT_LLM=ollama python -m devui.server
