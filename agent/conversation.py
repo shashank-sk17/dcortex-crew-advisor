@@ -83,6 +83,20 @@ class Exchange:
         return list(getattr(body, "excluded", []) or [])
 
     @property
+    def pending_rank(self) -> tuple[str, str] | None:
+        """(crew_id, real rank) when the last turn queried a stated rank.
+
+        "FO C-2087" names a real person under the wrong seat. Confirming does
+        not swap the id — it drops the wrong rank and proceeds with the roster's.
+        """
+        for entry in self.response.trace:
+            if entry.tool == "roster_check" and entry.error:
+                m = re.search(r"(C-\d{4}) is a ([A-Za-z ]+?), not a", entry.error)
+                if m:
+                    return m.group(1), m.group(2).strip()
+        return None
+
+    @property
     def pending_detail(self) -> str | None:
         """A detail the last turn asked for and could not proceed without.
 
@@ -283,14 +297,29 @@ class Conversation:
                     "Understood — not that one. Give me the correct id and I "
                     "will run it.", prior))
 
-        # 2. Supplying a detail the previous turn asked for. Re-run the
+        # 2. Confirming a rank we queried — proceed with the roster's, and
+        #    strip the wrong one so it cannot be picked up again.
+        if prior is not None and (pending_rank := prior.pending_rank):
+            crew_id, real_rank = pending_rank
+            if AFFIRM_RE.match(query) or real_rank.lower() in query.lower():
+                from agent.entities import STATED_RANK_RE
+
+                corrected = STATED_RANK_RE.sub(
+                    lambda m: f"{real_rank} {m.group(2)}", prior.query)
+                return self._record(corrected, self._advisor.ask(corrected))
+            if DENY_RE.match(query):
+                return self._record(query, self._from_prior(
+                    f"Understood. Give me the right crew id and I will run it — "
+                    f"{crew_id} is the {real_rank}.", prior))
+
+        # 3. Supplying a detail the previous turn asked for. Re-run the
         #    original question with it rather than treating the fragment as a
         #    new query — "on 2026-09-15" alone means nothing.
         if prior is not None and prior.pending_detail == "date" and ents.dates:
             resumed = f"{prior.query} on {ents.dates[0]}"
             return self._record(resumed, self._advisor.ask(resumed))
 
-        # 3. Follow-ups the previous turn already answered.
+        # 4. Follow-ups the previous turn already answered.
         if prior is not None:
             target = ents.crew_ids[0] if ents.crew_ids else None
 
@@ -302,7 +331,7 @@ class Conversation:
                 if answer := self._answer_decision(target):
                     return self._record(query, answer)
 
-        # 4. A new question, with whatever this turn left implicit filled in.
+        # 5. A new question, with whatever this turn left implicit filled in.
         query_for_agent = query
         if prior is not None and (WHAT_ABOUT_RE.search(query)
                                   or ANAPHORA_RE.search(query)

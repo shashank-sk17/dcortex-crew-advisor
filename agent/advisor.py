@@ -18,6 +18,7 @@ from dataclasses import fields as dataclass_fields
 from typing import Any, Iterator
 
 from agent import config, explainer, verifier
+from agent.entities import stated_ranks
 from agent.llm import LLM, StreamEvent, ToolCall, default_llm
 from agent.prompts import system_prompt
 from agent.router import Route, route
@@ -500,12 +501,44 @@ class Advisor:
             return Confidence.MEDIUM, unknowns
         return Confidence.HIGH, unknowns
 
+    def rank_mismatch(self, query: str) -> str | None:
+        """A rank the query asserts that the roster contradicts.
+
+        dCortex's own problem statement says "FO C-2087" and their dataset
+        README flags it as an erratum — C-2087 is a Captain. A controller
+        typing that has either misremembered the seat or means a different
+        person, and both change the answer. Accepting it silently is the
+        failure; the roster knows, so it should say.
+        """
+        for crew_id, claimed in stated_ranks(query):
+            try:
+                rows = self.port.lookup("crew", {"crew_id": crew_id})
+            except Exception:
+                continue
+            if not rows:
+                continue
+            actual = rows[0].get("rank")
+            if actual and actual != claimed:
+                return (f"{crew_id} is a {actual}, not a {claimed}. "
+                        f"Did you mean a different crew member, or shall I "
+                        f"proceed with {crew_id} as {actual}?")
+        return None
+
     def ask(self, query: str, llm: LLM | None = None) -> AdvisorResponse:
         """Route, gather evidence, verify, explain."""
         turn = Turn(query=query)
         turn.route = route(query, llm or self.llm)
 
-        self._tool_loop(turn)
+        # Before anything runs: does the query assert something about a person
+        # that the roster contradicts? Answering the wrong seat confidently is
+        # worse than asking.
+        if mismatch := self.rank_mismatch(query):
+            turn.trace.append(TraceEntry(
+                tool="roster_check", args={"query": query},
+                error=f"NEEDS_CONFIRMATION: {mismatch}"))
+            turn.awaiting_controller = True
+        else:
+            self._tool_loop(turn)
 
         confidence, unknowns = self._confidence(turn)
         response = AdvisorResponse(
