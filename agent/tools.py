@@ -60,6 +60,25 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "notification_brief",
+        "description": (
+            "Every fact a callout message needs for one crew member on one "
+            "pairing: report times and stations per day, the legs in order, "
+            "overnight stations, and an acknowledgement deadline derived from "
+            "the crew member's own reachability. Read from the roster — call "
+            "this before drafting a notification rather than writing times "
+            "from memory."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "crew_id": {"type": "string"},
+                "pairing_id": {"type": "string"},
+            },
+            "required": ["crew_id", "pairing_id"],
+        },
+    },
+    {
         "name": "duty_clock",
         "description": (
             "A crew member's accrued duty and block hours with headroom under "
@@ -391,6 +410,7 @@ class ToolPort(Protocol):
 
     def lookup(self, entity: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
     def duty_clock(self, crew_id: str, date: str | None = None) -> dict[str, Any]: ...
+    def notification_brief(self, crew_id: str, pairing_id: str) -> dict[str, Any]: ...
     def check_legality(self, crew_id: str, pairing_id: str, delay_h: float = 0.0) -> dict[str, Any]: ...
     def find_options(self, pairing_id: str, role: str, callout_utc: str | None = None) -> dict[str, Any]: ...
     def ripple(self, event: dict[str, Any]) -> dict[str, Any]: ...
@@ -477,6 +497,26 @@ class PlaceholderToolPort:
         for key, want in resolve_filters(entity, filters, self.entity_fields(entity)).items():
             rows = [r for r in rows if row_matches(r, key, want)]
         return rows
+
+    def notification_brief(self, crew_id: str, pairing_id: str) -> dict[str, Any]:
+        from agent import notify
+
+        crew = self.lookup("crew", {"crew_id": crew_id})
+        if not crew:
+            raise ToolError("UNRESOLVED_ENTITY", f"no crew {crew_id!r}")
+        pairings = self.lookup("pairings", {"pairing_id": pairing_id})
+        if not pairings:
+            raise ToolError("UNRESOLVED_ENTITY", f"no pairing {pairing_id!r}")
+        pairing = pairings[0]
+
+        by_id = {f["flight_id"]: f for f in self._rows("flights")}
+        days = [
+            {**day, "flights": [by_id[f] for f in day.get("flights", []) if f in by_id]}
+            for day in pairing.get("days", [])
+        ]
+        role = next((c["role"] for c in pairing.get("crew", [])
+                     if c["crew_id"] == crew_id), None)
+        return notify.assemble(crew[0], pairing_id, pairing.get("aircraft"), days, role)
 
     def explain_rule(self, rule_id: str) -> dict[str, Any]:
         rules = self._load("rules")["rules"]

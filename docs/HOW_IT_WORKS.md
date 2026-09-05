@@ -169,7 +169,7 @@ The engine is scored against dCortex's published keys:
 | S6 two simultaneous sick calls | 13/13 both aircraft · ₹42,500 joint total · 20 equal-cost ties |
 | Q18 legality detail | reproduces the key's wording verbatim |
 
-`pytest -q` → 300 passing.
+`pytest -q` → 326 passing.
 
 ---
 

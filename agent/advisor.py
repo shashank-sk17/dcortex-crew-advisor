@@ -18,7 +18,7 @@ from dataclasses import fields as dataclass_fields
 from datetime import date, timedelta
 from typing import Any, Iterator
 
-from agent import config, explainer, verifier
+from agent import config, explainer, notify, verifier
 from agent.entities import stated_ranks
 from agent.llm import LLM, StreamEvent, ToolCall, default_llm
 from agent.prompts import system_prompt
@@ -31,6 +31,7 @@ from agent.schemas import (
     FunnelStage,
     Intent,
     LookupAnswer,
+    NotificationAnswer,
     Option,
     ReplacementAnswer,
     RuleVerdict,
@@ -79,6 +80,7 @@ _INTENT_TOOLS: dict[Intent, tuple[str, ...]] = {
     Intent.LOOKUP_CREW: ("lookup",),
     Intent.LOOKUP_FLIGHT: ("lookup",),
     Intent.LOOKUP_CERT: ("lookup",),
+    Intent.DRAFT_NOTIFICATION: ("notification_brief", "lookup"),
     Intent.LOOKUP_DUTY_CLOCK: ("duty_clock",),
     Intent.EXPLAIN_RULE: ("explain_rule",),
     Intent.CHECK_LEGALITY: ("check_legality", "explain_rule"),
@@ -223,6 +225,10 @@ def seed_calls(route: Route) -> list[ToolCall]:
         case Intent.LOOKUP_CERT:
             add("lookup", entity="certifications", filters=_cert_filters(ents))
 
+        case Intent.DRAFT_NOTIFICATION if ents.primary_crew and ents.primary_pairing:
+            add("notification_brief",
+                crew_id=ents.primary_crew, pairing_id=ents.primary_pairing)
+
         case Intent.CHECK_LEGALITY if ents.primary_crew and ents.primary_pairing:
             add("check_legality",
                 crew_id=ents.primary_crew, pairing_id=ents.primary_pairing)
@@ -341,6 +347,11 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
     Structured object first; prose is rendered from it (DECISIONS.md #4).
     """
     results = {e.tool: e.result for e in trace if e.result is not None}
+
+    if route.intent is Intent.DRAFT_NOTIFICATION:
+        brief = results.get("notification_brief") or {}
+        return NotificationAnswer(
+            message=notify.render(brief) if brief else "", brief=brief)
 
     if route.tier is Tier.LOOKUP:
         rows: list[dict[str, Any]] = []

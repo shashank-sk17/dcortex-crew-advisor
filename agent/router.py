@@ -124,6 +124,17 @@ ASKS_IMPACT_RE = _p(
 RULES: tuple[Rule, ...] = (
     # ---- tier 3 -----------------------------------------------------------
     Rule(
+        # First, because "draft the callout notification" also contains
+        # "callout" — which is a cover request everywhere else in this table.
+        # The verb is what distinguishes them: the controller has already
+        # decided who, and wants the message written.
+        Intent.DRAFT_NOTIFICATION,
+        _p(r"\bdraft\b", r"\bnotification\b", r"\bnotify\b", r"\bmessage (to|for)\b",
+           r"\bwrite (the |a )?(message|note|text|sms)\b", r"\binform\b",
+           r"\blet (them|him|her|the crew) know\b"),
+        "notification",
+    ),
+    Rule(
         # These phrasings are explicit enough to stand alone — "both captains
         # are sick" names two events without naming either crew member.
         Intent.JOINT_PLAN,

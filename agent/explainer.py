@@ -24,6 +24,7 @@ from agent.schemas import (
     Citation,
     ConsequenceAnswer,
     LookupAnswer,
+    NotificationAnswer,
     Option,
     ReplacementAnswer,
     RuleVerdict,
@@ -31,8 +32,14 @@ from agent.schemas import (
 )
 
 
-ROW_LIMIT = 10
-"""Rows shown before a lookup listing is truncated."""
+ROW_LIMIT = 25
+"""Rows shown before a lookup listing is truncated.
+
+Ten cut Q01 short: BLR carries twelve reserves and the answer key lists all
+twelve, so the correct answer was being truncated into an incomplete one.
+Twenty-five clears every tier-1 gold answer with room over, and a table that
+long is still quicker to read than the paragraph it replaced.
+"""
 
 
 def fmt_value(value: Any) -> str:
@@ -117,13 +124,76 @@ def render_option(option: Option, show_rank: bool = True) -> str:
 # --------------------------------------------------------------------------
 
 
+# Columns a controller reads first. Anything not named here keeps its natural
+# order behind these — a stable left edge is what makes a table scannable when
+# you are reading it for the third time in ten minutes.
+_COLUMN_ORDER: tuple[str, ...] = (
+    "crew_id", "name", "rank", "role", "base",
+    "flight_id", "flight_no", "pairing_id", "aircraft", "aircraft_type",
+    "date", "dep_station", "arr_station", "dep_utc", "arr_utc",
+    "oncall_start_utc", "oncall_end_utc", "report_utc", "release_utc",
+    "cert_type", "valid_from", "valid_to",
+)
+
+
+def _columns(rows: list[dict[str, Any]]) -> list[str]:
+    """Union of the rows' keys, preferred columns first.
+
+    A union rather than the first row's keys: backends differ in which
+    optional fields they populate, and a column silently missing because row
+    one happened to lack it is a fact withheld from the controller.
+    """
+    seen: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in seen:
+                seen.append(key)
+    ranked = [c for c in _COLUMN_ORDER if c in seen]
+    return ranked + [c for c in seen if c not in ranked]
+
+
 def render_lookup(answer: LookupAnswer) -> str:
+    """A tier-1 result as an aligned table.
+
+    This is the tier a controller reaches first and the one dCortex makes
+    mandatory, so it is worth reading well. `key=value · key=value` repeated
+    the column name on every row and put the values at a different offset in
+    each one, which is unscannable at exactly the moment scanning matters.
+
+    Values are never truncated. A shortened id reads as a different id, and
+    the verifier would rightly refuse to source it.
+    """
     if not answer.rows:
         return "No records match that query."
+
     noun = "record" if answer.count == 1 else "records"
+    shown = answer.rows[:ROW_LIMIT]
+    columns = _columns(shown)
+
+    # A column holding one value across every row discriminates nothing here,
+    # and `dates` on the reserve pool is 82 characters of it — enough to push
+    # the on-call windows off the side of the screen. State it once above the
+    # table instead. Stated, not dropped: the value is still on the page.
+    constant: list[str] = []
+    if len(shown) > 1:
+        for column in list(columns):
+            values = {fmt_value(row.get(column, "")) for row in shown}
+            if len(values) == 1 and len(next(iter(values))) > 20:
+                constant.append(f"{column}: {values.pop()}")
+                columns.remove(column)
+
+    cells = [[fmt_value(row.get(c, "")) for c in columns] for row in shown]
+    widths = [max(len(c), *(len(r[i]) for r in cells)) for i, c in enumerate(columns)]
+
+    def line(values: list[str]) -> str:
+        padded = [v.ljust(w) for v, w in zip(values, widths)]
+        return "  " + "  ".join(padded).rstrip()
+
     lines = [f"{answer.count} {noun}."]
-    for row in answer.rows[:ROW_LIMIT]:
-        lines.append("  " + " · ".join(f"{k}={fmt_value(v)}" for k, v in row.items()))
+    lines += [f"  every row — {c}" for c in constant]
+    lines += ["", line(columns), "  " + "  ".join("─" * w for w in widths)]
+    lines += [line(row) for row in cells]
+
     if answer.count > ROW_LIMIT:
         # No number here on purpose. "and N more" is arithmetic the renderer
         # did itself, and even a literal page size is a figure no tool
@@ -322,6 +392,10 @@ def render(response: AdvisorResponse) -> str:
             body = render_replacement(a)
         case ConsequenceAnswer() as a:
             body = render_consequence(a)
+        case NotificationAnswer() as a:
+            # Already prose, and every time in it came from the roster. There
+            # is nothing for a second renderer to add.
+            body = a.message
         case _:
             body = ""
 

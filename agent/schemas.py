@@ -40,6 +40,7 @@ class Intent(enum.StrEnum):
     SIMULATE_WHATIF = "SIMULATE_WHATIF"
     JOINT_PLAN = "JOINT_PLAN"
     RESOLVE_ILLEGAL = "RESOLVE_ILLEGAL"
+    DRAFT_NOTIFICATION = "DRAFT_NOTIFICATION"
 
     @property
     def tier(self) -> Tier:
@@ -61,6 +62,7 @@ _INTENT_TIER: dict[Intent, Tier] = {
     Intent.SIMULATE_WHATIF: Tier.CONSEQUENCE,
     Intent.JOINT_PLAN: Tier.CONSEQUENCE,
     Intent.RESOLVE_ILLEGAL: Tier.CONSEQUENCE,
+    Intent.DRAFT_NOTIFICATION: Tier.CONSEQUENCE,
 }
 
 
@@ -182,6 +184,21 @@ class LookupAnswer:
     @property
     def count(self) -> int:
         return len(self.rows)
+
+
+@dataclass(slots=True)
+class NotificationAnswer:
+    """A message to a crew member, and the roster facts it was built from.
+
+    `brief` is kept beside the prose deliberately. It is what the verifier
+    checks the message against, and it is what a controller amending the
+    wording needs in front of them — every time in the draft is in there,
+    labelled, so an edit cannot quietly move one.
+    """
+
+    kind: str = "notification"
+    message: str = ""
+    brief: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

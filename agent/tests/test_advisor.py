@@ -361,9 +361,10 @@ class TestRendererNeverComputes:
     """
 
     def _long(self):
+        from agent import explainer
         from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier, TraceEntry
 
-        rows = [{"crew_id": f"C-{1000+i}"} for i in range(21)]
+        rows = [{"crew_id": f"C-{1000+i}"} for i in range(explainer.ROW_LIMIT + 11)]
         return AdvisorResponse(
             tier=Tier.LOOKUP, intent=Intent.LOOKUP_CREW, answer=LookupAnswer(rows=rows),
             trace=[TraceEntry(tool="lookup", result=rows)],
@@ -386,7 +387,7 @@ class TestRendererNeverComputes:
     def test_total_is_still_reported(self):
         from agent import explainer
 
-        assert "21 records" in explainer.render(self._long())
+        assert f"{explainer.ROW_LIMIT + 11} records" in explainer.render(self._long())
 
 
 class TestArrayAndAliasCoverage:
@@ -848,3 +849,145 @@ class TestFilterRanges:
         from agent.tools import row_matches
 
         assert row_matches({"ratings": ["A320", "ATR72"]}, "ratings", "A320")
+
+
+class TestNotification:
+    """Q36 — the callout message. The one place a model is the right tool for
+    the job, which is why every fact under it comes from the roster."""
+
+    def _brief(self):
+        return PlaceholderToolPort().notification_brief("C-3310", "P-2291")
+
+    def test_routes_away_from_cover(self):
+        """"Draft the callout notification" contains "callout", which is a
+        cover request in every other pattern in the table."""
+        r = route("Draft the callout notification to C-3310 for covering P-2291.")
+        assert r.intent is Intent.DRAFT_NOTIFICATION
+        assert seed_calls(r)[0].name == "notification_brief"
+
+    def test_times_come_from_the_roster(self):
+        brief = self._brief()
+        day1, day2 = brief["days"]
+        assert (day1["report_utc"], day1["report_station"]) == ("06:00Z", "BLR")
+        assert day1["flights"] == ["DX412", "DX413", "DX588"]
+        assert day1["overnight_station"] == "DEL"
+        assert (day2["report_utc"], day2["report_station"]) == ("04:00Z", "DEL")
+        assert day2["flights"] == ["DX589", "DX590", "DX591"]
+
+    def test_last_day_does_not_overnight(self):
+        """The crew go home. An overnight on the final day would book a hotel
+        nobody needs and tell the crew to stay put."""
+        assert self._brief()["days"][-1]["overnight_station"] is None
+
+    def test_acknowledgement_deadline_is_derived_from_reachability(self):
+        """06:00Z report, 45 minutes to reach the airport -> 05:15Z. The last
+        moment a "no" is still actionable, not a round number."""
+        brief = self._brief()
+        assert brief["reachability_minutes"] == 45
+        assert brief["acknowledge_by_utc"] == "05:15Z"
+
+    def test_covers_every_item_the_answer_key_requires(self):
+        from agent import notify
+
+        message = notify.render(self._brief())
+        for required in ("C-3310", "P-2291", "06:00Z", "BLR crew room",
+                         "DX412/DX413/DX588", "DEL", "04:00Z",
+                         "DX589/DX590/DX591", "acknowledge", "Crew Control"):
+            assert required in message, required
+
+    def test_invents_no_contact_details(self):
+        """A plausible-looking phone number is exactly the kind of invention
+        this system exists not to make; the dataset has none."""
+        import re
+
+        from agent import notify
+
+        message = notify.render(self._brief())
+        assert not re.search(r"\+?\d[\d\s-]{7,}", message)
+
+    def test_message_is_verifiable_against_its_own_brief(self):
+        from agent.schemas import AdvisorResponse, NotificationAnswer, Tier, TraceEntry
+        from agent.verifier import verify
+
+        brief = self._brief()
+        response = AdvisorResponse(
+            tier=Tier.CONSEQUENCE, intent=Intent.DRAFT_NOTIFICATION,
+            answer=NotificationAnswer(brief=brief),
+            trace=[TraceEntry(tool="notification_brief", result=brief)],
+        )
+        from agent import explainer
+
+        assert verify(explainer.render(response), response.trace).ok
+
+    def test_unknown_pairing_is_refused_not_improvised(self):
+        from agent.tools import ToolError
+
+        with pytest.raises(ToolError, match="P-9999"):
+            PlaceholderToolPort().notification_brief("C-3310", "P-9999")
+
+
+class TestLookupTable:
+    """Tier 1 is the mandatory tier and the first thing anyone will type at
+    this. It is worth reading well."""
+
+    def _answer(self, rows):
+        from agent.schemas import AdvisorResponse, LookupAnswer, Tier, TraceEntry
+
+        return AdvisorResponse(
+            tier=Tier.LOOKUP, intent=Intent.LOOKUP_CREW,
+            answer=LookupAnswer(rows=rows),
+            trace=[TraceEntry(tool="lookup", result=rows)],
+        )
+
+    def test_columns_align_across_rows(self):
+        from agent import explainer
+
+        out = explainer.render(self._answer([
+            {"crew_id": "C-1", "rank": "Captain"},
+            {"crew_id": "C-1042", "rank": "First Officer"},
+        ]))
+        body = [ln for ln in out.splitlines() if "C-1" in ln]
+        assert len({ln.index("C-1") for ln in body}) == 1, "ragged left edge"
+        starts = {body[0].index("Captain"), body[1].index("First Officer")}
+        assert len(starts) == 1, "ragged second column"
+
+    def test_a_column_missing_from_the_first_row_still_appears(self):
+        """Backends differ in which optional fields they populate. A column
+        dropped because row one lacked it is a fact withheld."""
+        from agent import explainer
+
+        out = explainer.render(self._answer([{"crew_id": "C-1"},
+                                             {"crew_id": "C-2", "base": "BLR"}]))
+        assert "base" in out and "BLR" in out
+
+    def test_identity_columns_come_first(self):
+        from agent import explainer
+
+        out = explainer.render(self._answer([{"seniority": 14, "crew_id": "C-1042"}]))
+        header = [ln for ln in out.splitlines() if "crew_id" in ln][0]
+        assert header.index("crew_id") < header.index("seniority")
+
+    def test_a_wide_constant_column_is_stated_once_not_repeated(self):
+        """reserve_pool.dates is the same 82 characters on every row, which
+        pushed the on-call windows off the side of the screen."""
+        from agent import explainer
+
+        dates = ["2026-09-%02d" % d for d in range(14, 21)]
+        out = explainer.render(self._answer([
+            {"crew_id": "C-1", "dates": dates, "oncall_start_utc": "04:00"},
+            {"crew_id": "C-2", "dates": dates, "oncall_start_utc": "06:00"},
+        ]))
+        assert out.count("2026-09-14") == 1, "repeated on every row"
+        assert "every row — dates" in out, "stated, not silently dropped"
+        assert "04:00" in out and "06:00" in out
+
+    def test_values_are_never_truncated(self):
+        """A shortened id reads as a different id, and the verifier would
+        rightly refuse to source it."""
+        from agent import explainer
+        from agent.verifier import verify
+
+        response = self._answer([{"flight_id": "DX412-2026-09-15"}])
+        out = explainer.render(response)
+        assert "DX412-2026-09-15" in out
+        assert verify(out, response.trace).ok

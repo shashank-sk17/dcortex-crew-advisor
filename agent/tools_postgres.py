@@ -176,6 +176,41 @@ class PostgresToolPort:
             tuple(params),
         )
 
+    def notification_brief(self, crew_id: str, pairing_id: str) -> dict[str, Any]:
+        """Roster facts for a callout message.
+
+        The legs of a pairing day live in `pairing_day_flights`, which is not
+        one of the lookup entities — a join is the honest way to read it, and
+        `leg_order` is what makes "DX412/DX413/DX588" the operating sequence
+        rather than three flights in whatever order the planner returned.
+        """
+        from agent import notify
+
+        crew = self.lookup("crew", {"crew_id": crew_id})
+        if not crew:
+            raise ToolError("UNRESOLVED_ENTITY", f"no crew {crew_id!r}")
+        pairings = self.lookup("pairings", {"pairing_id": pairing_id})
+        if not pairings:
+            raise ToolError("UNRESOLVED_ENTITY", f"no pairing {pairing_id!r}")
+
+        legs = self._query(
+            "select pdf.date, f.flight_no, f.dep_station, f.arr_station "
+            "from pairing_day_flights pdf join flights f using (flight_id) "
+            "where pdf.pairing_id = %s order by pdf.date, pdf.leg_order",
+            (pairing_id,),
+        )
+        days = []
+        for day in self.lookup("pairing_days", {"pairing_id": pairing_id}):
+            days.append({**day, "flights": [
+                leg for leg in legs if str(leg["date"]) == str(day["date"])
+            ]})
+        days.sort(key=lambda d: str(d["date"]))
+
+        role = next((r["role"] for r in self.lookup(
+            "pairing_crew", {"pairing_id": pairing_id}) if r["crew_id"] == crew_id), None)
+        return notify.assemble(
+            crew[0], pairing_id, pairings[0].get("aircraft"), days, role)
+
     def duty_clock(self, crew_id: str, date_: str | None = None, **kw: Any) -> dict[str, Any]:
         """Accrued hours and headroom on a calendar-day window.
 
