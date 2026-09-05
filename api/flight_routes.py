@@ -184,40 +184,75 @@ def get_flights():
                     # ---------------------------------------------
                     crew_fdp_headroom_min = None
 
-                    # ---------------------------------------------
-                    # Rank signals that can be safely derived
-                    # ---------------------------------------------
                     delay_reasons = []
 
                     if slack_minutes is not None:
-
                         if slack_minutes < 30:
                             delay_reasons.append(
                                 "low aircraft turnaround slack"
                             )
-
                         elif slack_minutes < 60:
                             delay_reasons.append(
                                 "reduced aircraft turnaround slack"
+                            )
+                        elif slack_minutes < 90:
+                            delay_reasons.append(
+                                "limited aircraft turnaround slack"
                             )
 
                     if downstream_count >= 4:
                         delay_reasons.append(
                             "high downstream aircraft impact"
                         )
+                    elif downstream_count >= 3:
+                        delay_reasons.append(
+                            "moderate downstream aircraft impact"
+                        )
+                    elif downstream_count >= 2:
+                        delay_reasons.append(
+                            "multiple downstream aircraft affected"
+                        )
 
-                    # We cannot derive a reliable numeric score
-                    # or full status from the current DB.
+
+                    # ---------------------------------------------
+                    # Derive delay rank
+                    # ---------------------------------------------
+                    if (
+                        (slack_minutes is not None and slack_minutes < 30)
+                        or downstream_count >= 4
+                    ):
+                        flight_delay_rank = "critical"
+                        flight_delay_score = 0.9
+
+                    elif (
+                        (slack_minutes is not None and slack_minutes < 60)
+                        or downstream_count >= 3
+                    ):
+                        flight_delay_rank = "high"
+                        flight_delay_score = 0.7
+
+                    elif (
+                        (slack_minutes is not None and slack_minutes < 90)
+                        or downstream_count >= 2
+                    ):
+                        flight_delay_rank = "medium"
+                        flight_delay_score = 0.5
+
+                    else:
+                        flight_delay_rank = "low"
+                        flight_delay_score = 0.2
+
+
+                    # Status is still not directly available from DB
                     flight_status = None
-                    flight_delay_rank = None
-                    flight_delay_score = None
+                                    
 
                     # Do not pretend filters are supported when the
                     # underlying value is unavailable.
                     if status_filter:
                         continue
 
-                    if delay_rank_filter:
+                    if delay_rank_filter and flight_delay_rank != delay_rank_filter:
                         continue
 
                     flights.append({
@@ -252,12 +287,7 @@ def get_flights():
                         "delay_rank_reasons": delay_reasons,
                         "slack_minutes": slack_minutes,
                         "downstream_count": downstream_count,
-                        "crew_fdp_headroom_min": crew_fdp_headroom_min,
-                        "basis": [
-                            "flights.json",
-                            "rosters.json",
-                            "rules.json"
-                        ]
+                        "crew_fdp_headroom_min": crew_fdp_headroom_min
                     })
 
         return jsonify({
@@ -623,14 +653,7 @@ def get_flight(flight_id):
                         "next_leg": next_leg,
 
                         "operating_crew_pressure":
-                            operating_crew_pressure,
-
-                        "basis": [
-                            "flights.json",
-                            "rosters.json",
-                            "duty_clocks.json",
-                            "rules.json"
-                        ]
+                            operating_crew_pressure
                     }
                 }), 200
 
