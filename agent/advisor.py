@@ -47,6 +47,11 @@ class AdvisorConfig:
     max_verify_retries: int = 1
 
 
+# A tool can end a turn by asking the controller something. These are not
+# failures to route around — they are questions only a human can settle.
+CLARIFYING = ("AMBIGUOUS_QUERY", "NEEDS_CONFIRMATION")
+
+
 @dataclass(slots=True)
 class Turn:
     """Everything that happened while answering one question."""
@@ -59,6 +64,7 @@ class Turn:
     notes: list[str] = field(default_factory=list)
     seen_calls: set[str] = field(default_factory=set)
     repeats: int = 0
+    awaiting_controller: bool = False
 
 
 # --------------------------------------------------------------------------
@@ -411,6 +417,15 @@ class Advisor:
             turn.trace.append(entry)
             if entry.error:
                 turn.notes.append(f"{entry.tool}: {entry.error}")
+                if entry.error.startswith(CLARIFYING):
+                    # "DX412 operates on three dates — which do you mean?" is a
+                    # question for the controller. Left to continue, the model
+                    # answered it itself: it checked all three dates and then
+                    # narrated whichever it preferred, so the same question
+                    # produced different answers on different runs. Choosing
+                    # among them is the desk's call, not ours.
+                    turn.awaiting_controller = True
+                    return
 
     def _tool_loop(self, turn: Turn) -> None:
         """Seed from entities, then let the model request more until it stops."""
@@ -418,8 +433,12 @@ class Advisor:
 
         if seeds := seed_calls(turn.route):
             self._run_tools(seeds, turn)
+            if turn.awaiting_controller:
+                return
             if followups := followup_calls(turn.route, turn.trace):
                 self._run_tools(followups, turn)
+            if turn.awaiting_controller:
+                return
 
         tools = tools_for(turn.route.intent, self.port)
         messages: list[dict[str, Any]] = [{"role": "user", "content": turn.query}]
@@ -436,6 +455,8 @@ class Advisor:
                 break
             before = len(turn.trace)
             self._run_tools(response.tool_calls, turn)
+            if turn.awaiting_controller:
+                return
             if len(turn.trace) == before:
                 # Every requested call was a repeat: the model is looping and
                 # has no new evidence to gather. Stop rather than burn the cap.
@@ -467,6 +488,10 @@ class Advisor:
         unknowns = [n for n in turn.notes]
         errored = any(e.error for e in turn.trace)
 
+        if turn.awaiting_controller:
+            # A question for the controller is a complete, confident answer.
+            return Confidence.HIGH, []
+
         if not turn.trace:
             return Confidence.LOW, unknowns + ["no tool produced any data"]
         if errored:
@@ -492,6 +517,13 @@ class Advisor:
             unknowns=unknowns,
             trace=turn.trace,
         )
+
+        if turn.awaiting_controller:
+            asked = next(e for e in turn.trace
+                         if e.error and e.error.startswith(CLARIFYING))
+            response.narrative = asked.error.split(":", 1)[-1].strip()
+            response.confidence = Confidence.HIGH
+            return response
 
         if not turn.trace:
             # Nothing ran at all. Say why rather than returning silence.

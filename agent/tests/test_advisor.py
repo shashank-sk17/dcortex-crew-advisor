@@ -714,3 +714,65 @@ class TestLegalityAnswersAreNotDiscarded:
 
         assert explainer.has_content(
             self._response(True, [{"rule_id": "RULE-FDP-01", "status": "PASS"}]))
+
+
+class TestClarifyingQuestionsReachTheController:
+    """A tool can end a turn by asking something only a human can settle.
+
+    "DX412 operates on three dates — which do you mean?" was being answered by
+    the model itself: it checked all three and narrated whichever it preferred,
+    so the same question gave different answers on different runs. One run led
+    with CERT-06 on the 19th, the next with DUTY-02 on the 15th. Both true,
+    neither asked for.
+    """
+
+    def _port_that_asks(self, code="AMBIGUOUS_QUERY"):
+        from agent.tools import PlaceholderToolPort, ToolError
+
+        class Asking(PlaceholderToolPort):
+            def check_legality(self, crew_id, pairing_id=None, **kw):
+                raise ToolError(code, "DX412 operates on three dates. Which?")
+
+        return Asking()
+
+    def _eager_llm(self):
+        """A model that tries to answer the question itself."""
+        from agent.llm import LLMResponse, PlaceholderLLM, ToolCall
+
+        return PlaceholderLLM([
+            LLMResponse(tool_calls=[ToolCall("1", "check_legality",
+                                             {"crew_id": "C-2087",
+                                              "pairing_id": "P-2291"})],
+                        stop_reason="tool_use")] * 6)
+
+    def test_the_loop_stops_on_a_clarifying_question(self):
+        llm = self._eager_llm()
+        r = Advisor(port=self._port_that_asks(), llm=llm).ask(
+            "If C-2087 covers P-2291, does any rule breach?")
+        assert len(r.trace) == 1, "kept calling tools past a question for the human"
+
+    def test_the_question_is_the_answer(self):
+        r = Advisor(port=self._port_that_asks(), llm=self._eager_llm()).ask(
+            "If C-2087 covers P-2291, does any rule breach?")
+        assert "Which?" in r.narrative
+        assert r.confidence is Confidence.HIGH
+
+    def test_a_needs_confirmation_halts_too(self):
+        r = Advisor(port=self._port_that_asks("NEEDS_CONFIRMATION"),
+                    llm=self._eager_llm()).ask(
+            "If C-2087 covers P-2291, does any rule breach?")
+        assert len(r.trace) == 1
+
+    def test_an_ordinary_failure_does_not_halt(self):
+        """A missing capability is not a question — the model may still route
+        around it."""
+        from agent.tools import PlaceholderToolPort, ToolError
+
+        class Broken(PlaceholderToolPort):
+            def check_legality(self, crew_id, pairing_id=None, **kw):
+                raise ToolError("INTERNAL", "needs the rules engine")
+
+        llm = self._eager_llm()
+        Advisor(port=Broken(), llm=llm).ask(
+            "If C-2087 covers P-2291, does any rule breach?")
+        assert len(llm.calls) > 1, "halted on something that was not a question"
