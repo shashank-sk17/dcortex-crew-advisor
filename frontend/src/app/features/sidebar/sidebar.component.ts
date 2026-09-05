@@ -6,7 +6,7 @@ import { AppState } from '../../core/app-state';
 import { RiskSignal, Summary } from '../../core/api.types';
 import { AccordionItemComponent } from '../../components/accordion-item.component';
 
-type Section = 'summary' | 'flights' | 'reserves' | 'watchlist';
+type Section = 'summary' | 'flights' | 'pax' | 'reserves' | 'watchlist';
 
 /**
  * Left rail — the whole shift at a glance from one `/summary` call plus the

@@ -273,7 +273,13 @@ export interface Alert {
 export interface Summary {
   date: IsoDate;
   crew: { on_duty: number; off_duty: number; reserve: number; needs_attention: number };
-  flights: { total: number; on_time: number; at_risk: number; delayed: number; cancelled: number };
+  flights: {
+    total: number; on_time: number; at_risk: number; delayed: number; cancelled: number;
+    /** Sum of seats across today's critical/high delay_rank flights — the disruption's pax footprint. */
+    pax_affected: number;
+    /** One row per critical/high delay_rank flight — the breakdown behind pax_affected. */
+    disrupted: { flight_id: string; flight_no: string; route: string; pax: number }[];
+  };
   alerts: { critical: number; warning: number };
   reserves: { by_base_role: Record<string, number>; depleted: string[] };
   aircraft: { in_service: number; aog: number };

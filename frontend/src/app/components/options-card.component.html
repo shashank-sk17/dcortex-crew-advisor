@@ -25,6 +25,15 @@
         }
         @if (o.unlock) { <div class="opt__unlock">🔓 {{ o.unlock }}</div> }
         @if (o.reasoning) { <p class="opt__why">{{ o.reasoning }}</p> }
+        @if (o.legal && o.crew_id) {
+          @if (decidedCrewId === o.crew_id) {
+            <span class="chip chip--pass opt__accepted">✓ accepted</span>
+          } @else if (!decidedCrewId) {
+            <button type="button" class="opt__accept" [disabled]="deciding" (click)="accept.emit(o)">
+              {{ deciding ? '…' : 'Accept this option' }}
+            </button>
+          }
+        }
       </div>
     </div>
   }

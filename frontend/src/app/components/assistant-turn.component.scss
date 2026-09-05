@@ -17,6 +17,36 @@
   border-radius: 6px; padding: 9px 11px; font-size: 13.5px;
 }
 
+/* modify — the fallback when none of the options-card's own suggestions fit */
+.turn__modify-link {
+  font-size: 12.5px; font-weight: 600; color: var(--fg-2);
+  text-decoration: underline; text-underline-offset: 2px; padding: 2px 0;
+}
+.turn__modify-link:hover { color: var(--accent); }
+
+.turn__decision {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding-top: 4px;
+}
+.turn__decision button {
+  font-size: 13px; font-weight: 700; padding: 7px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-line); background: var(--accent); color: #fff;
+}
+.turn__decision button:disabled { opacity: .6; cursor: default; }
+.turn__decision button.ghost {
+  background: transparent; color: var(--fg-2); border-color: var(--line); font-weight: 600;
+}
+.turn__decision--modify select {
+  flex: 1; min-width: 220px; background: var(--surface-0); color: var(--fg-0);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; font-size: 13px;
+}
+.turn__reason {
+  flex-basis: 100%; resize: vertical; background: var(--surface-0); color: var(--fg-0);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; font: inherit; font-size: 13px;
+  line-height: 1.4;
+}
+.turn__decision--done { font-size: 13.5px; color: var(--fg-1); }
+
 .prose { color: var(--fg-1); line-height: 1.6; margin: 0; font-size: 15px; }
 .caret {
   display: inline-block; width: 7px; height: 14px; margin-left: 2px;

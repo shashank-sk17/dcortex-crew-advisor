@@ -14,9 +14,5 @@ export const routes: Routes = [
     path: 'crew/:id',
     loadComponent: () => import('./features/crew/crew.component').then((m) => m.CrewComponent),
   },
-  {
-    path: 'workspace/:flightId',
-    loadComponent: () => import('./features/workspace/workspace.component').then((m) => m.WorkspaceComponent),
-  },
   { path: '**', redirectTo: 'board' },
 ];

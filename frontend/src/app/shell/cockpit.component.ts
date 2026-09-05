@@ -1,7 +1,5 @@
-import { ChangeDetectionStrategy, Component, OnInit, effect, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { filter } from 'rxjs/operators';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { environment } from '../../environments/environment';
 import { AppState } from '../core/app-state';
 import { SidebarComponent } from '../features/sidebar/sidebar.component';
@@ -13,9 +11,8 @@ import { ChatBubbleComponent } from '../features/advisor/chat-bubble.component';
  * three columns (sidebar · routed view · alerts), and the floating advisor bubble.
  * Both rails collapse to a slim edge tab so the controller can give the main
  * display the full width when neither the shift summary nor the alert queue
- * needs to be on screen — and collapse automatically on entering the resolution
- * workspace (which wants that width itself), reopening on the way back out.
- * Why: one place owns the layout and kicks off AppState so every view shares a date.
+ * needs to be on screen. Why: one place owns the layout and kicks off AppState
+ * so every view shares a date.
  */
 @Component({
   selector: 'app-cockpit',
@@ -33,23 +30,6 @@ export class CockpitComponent implements OnInit {
   readonly mock = environment.useMock;
   readonly leftOpen = signal(true);
   readonly rightOpen = signal(true);
-
-  private router = inject(Router);
-  private nav = toSignal(
-    this.router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)),
-  );
-
-  constructor() {
-    // the resolution workspace wants the full width — collapse both rails on
-    // entry, hand them back the moment the controller steps back out.
-    effect(() => {
-      const e = this.nav();
-      if (!e) return;
-      const inWorkspace = e.urlAfterRedirects.startsWith('/workspace');
-      this.leftOpen.set(!inWorkspace);
-      this.rightOpen.set(!inWorkspace);
-    });
-  }
 
   ngOnInit(): void {
     this.state.init();

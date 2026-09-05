@@ -31,6 +31,18 @@
         </div>
       </app-accordion-item>
 
+      <app-accordion-item title="Passengers affected" [badge]="s.flights.pax_affected" [open]="openSection() === 'pax'" (toggle)="toggle('pax')">
+        <div class="pax">
+          @for (f of s.flights.disrupted; track f.flight_id) {
+            <a class="pax__row" routerLink="/board" [queryParams]="{ flight: f.flight_id }">
+              <span><span class="mono">{{ f.flight_no }}</span> <span class="pax__route">{{ f.route }}</span></span>
+              <b>{{ f.pax }}</b>
+            </a>
+          }
+          @if (!s.flights.disrupted.length) { <p class="muted sm">No disrupted flights right now.</p> }
+        </div>
+      </app-accordion-item>
+
       <app-accordion-item title="Reserve pool" [open]="openSection() === 'reserves'" (toggle)="toggle('reserves')">
         <div class="pool">
           @for (kv of poolEntries(s); track kv[0]) {
