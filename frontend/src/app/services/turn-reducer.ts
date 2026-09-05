@@ -46,6 +46,9 @@ export function reduceTurn(turn: AssistantTurn, ev: AgentEvent): AssistantTurn {
     case 'abstain':
       return { ...turn, abstain: ev, status: null };
 
+    case 'awaiting':
+      return { ...turn, awaiting: ev.kind, narrative: ev.narrative, status: null };
+
     case 'done':
       return {
         ...turn,

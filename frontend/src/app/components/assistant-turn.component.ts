@@ -62,8 +62,10 @@ export class AssistantTurnComponent {
     return this.turn.answer?.kind === 'consequence' ? this.turn.answer : null;
   }
 
-  /** Whether this answer carries a recommendation at all — gates showing Accept/Modify. */
+  /** Whether this answer carries a recommendation at all — gates showing Accept/Modify.
+   * An `awaiting` turn never does: it's a question, not a finding (§2). */
   get hasOptions(): boolean {
+    if (this.turn.awaiting) return false;
     return (this.replacement?.options.length ?? 0) > 0 || (this.consequence?.options.length ?? 0) > 0;
   }
 
@@ -75,12 +77,21 @@ export class AssistantTurnComponent {
    */
   get modifyOptions(): Option[] {
     const nearMiss = this.replacement?.near_misses ?? [];
-    const overrides: Option[] = (this.replacement?.excluded ?? []).map((x) => ({
-      action: `Assign ${x.crew_id} — override (fails ${x.verdicts.map((v) => v.rule_id).join(', ')})`,
-      crew_id: x.crew_id, legal: false, rules_checked: x.verdicts.map((v) => v.rule_id),
-      cost_inr: 0, delay_hours: 0, rank: 0,
-    }));
+    const overrides: Option[] = (this.replacement?.excluded ?? []).map((x) => {
+      const rules = x.rules ?? x.verdicts?.map((v) => v.rule_id) ?? [];
+      const why = x.reason ?? (rules.length ? `fails ${rules.join(', ')}` : 'excluded by the agent');
+      return {
+        action: `Assign ${x.crew_id} — override (${why})`,
+        crew_id: x.crew_id, legal: false, rules_checked: rules,
+        cost_inr: 0, delay_hours: 0, rank: 0,
+      };
+    });
     return [...nearMiss, ...overrides].filter((o) => o.crew_id);
+  }
+
+  /** The agent asked a question instead of answering — docs/FRONTEND.md §2. */
+  get awaiting(): 'confirmation' | 'detail' | null {
+    return this.turn.awaiting;
   }
 
   /** The controller accepted one of the options-card's own per-row suggestions, as-is. */

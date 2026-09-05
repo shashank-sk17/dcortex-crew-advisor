@@ -12,6 +12,13 @@
 }
 
 .status { font-size: 13.5px; color: var(--fg-2); font-style: italic; }
+
+/* awaiting — a question, not a finding (docs/FRONTEND.md §2) */
+.turn__awaiting {
+  border: 1px solid var(--warn-line, var(--line)); background: var(--warn-bg, var(--surface-1));
+  border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.turn__awaiting p { margin: 0; font-size: 14px; color: var(--fg-1); line-height: 1.5; white-space: pre-line; }
 .error {
   border: 1px solid var(--fail-line); background: var(--fail-bg); color: var(--fail);
   border-radius: 6px; padding: 9px 11px; font-size: 13.5px;

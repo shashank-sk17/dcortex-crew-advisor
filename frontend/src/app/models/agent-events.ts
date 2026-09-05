@@ -104,6 +104,17 @@ export interface AbstainEvent {
   needed: string[];
 }
 
+/**
+ * The agent asked the controller something instead of answering — docs/FRONTEND.md §2,
+ * "the one thing that will catch you out". There is no recommendation to render yet;
+ * the next message the controller sends is the reply, in the same thread.
+ */
+export interface AwaitingEvent {
+  type: 'awaiting';
+  kind: 'confirmation' | 'detail';
+  narrative: string;
+}
+
 export interface DoneEvent {
   type: 'done';
   elapsed_ms: number;
@@ -126,6 +137,7 @@ export type AgentEvent =
   | TokenEvent
   | AnswerEvent
   | AbstainEvent
+  | AwaitingEvent
   | DoneEvent
   | ErrorEvent;
 
@@ -184,13 +196,20 @@ export interface FunnelStage {
   reason?: string;
 }
 
+/** Real shape confirmed against agent/tools.py's find_options — `reason` is the
+ * prose the doc's excluded[].reason documents; `rules` is the short id list.
+ * `verdicts` rides along additively when the failure traces to a specific rule. */
 export interface ExcludedCandidate {
   crew_id: string;
-  verdicts: RuleVerdict[];
+  reason?: string;
+  rules?: (RuleId | string)[];
+  verdicts?: RuleVerdict[];
 }
 
 export interface ReplacementAnswer {
   kind: 'replacement';
+  /** The agent's pick, when it has one — docs/FRONTEND.md §5 step 2: lead with this. */
+  recommended?: Option | null;
   uncovered_flights: string[];
   at_risk_flights: string[];
   passengers_affected: number;
@@ -198,6 +217,16 @@ export interface ReplacementAnswer {
   options: Option[];
   near_misses: Option[];
   excluded: ExcludedCandidate[];
+  cancellation_multiple?: number;
+  next_tier_cost_inr?: number;
+  next_tier_premium_inr?: number;
+  /** >0 means the pick is not unique — several plans cost the same. */
+  equal_cost_alternatives?: number;
+  // A direct legality question ("is C-2087 legal for X") answers here instead
+  // of with candidates — subject/legal/verdicts populated, options empty.
+  subject?: string | null;
+  legal?: boolean | null;
+  verdicts?: RuleVerdict[];
 }
 
 export interface BlastEdge {
@@ -253,6 +282,9 @@ export interface AssistantTurn {
   confidence: Confidence | null;
   unknowns: string[];
   abstain: AbstainEvent | null;
+  /** Set when the agent asked a question instead of answering — render the
+   * prompt, nothing else, and route the next message as the reply (§2). */
+  awaiting: 'confirmation' | 'detail' | null;
   error: string | null;
   elapsedMs: number | null;
   grounded: boolean | null;
@@ -285,6 +317,7 @@ export function emptyAssistantTurn(id: string, query: string | null = null): Ass
     confidence: null,
     unknowns: [],
     abstain: null,
+    awaiting: null,
     error: null,
     elapsedMs: null,
     grounded: null,

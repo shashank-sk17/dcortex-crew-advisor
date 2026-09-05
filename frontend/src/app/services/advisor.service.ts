@@ -13,8 +13,15 @@ export interface AskOptions {
  * The only place the app talks to the backend.
  *
  * Integration step for the hackathon = flip `environment.useMock` to false.
- * Transport is POST + fetch()-streamed SSE (EventSource can't POST, and we need
- * the `weights` body for the policy sliders). See docs/CONTRACT_RECONCILIATION.md.
+ *
+ * Transport is a single `POST /api/v1/ask` returning one JSON object — see
+ * docs/FRONTEND.md §3. It is NOT a stream: the advisor computes everything
+ * deterministically before replying, so there is nothing to stream (§7's
+ * `GET /stream` exists separately for a live trace, but the doc is explicit
+ * that `/ask` is the source of truth). We still emit an `AgentEvent[]` here,
+ * translated from the one JSON response, purely so the existing
+ * `reduceTurn`/`ConversationStore` pipeline — built for progressive SSE
+ * reveal — can render it with no changes on that side.
  */
 @Injectable({ providedIn: 'root' })
 export class AdvisorService {
@@ -22,62 +29,80 @@ export class AdvisorService {
 
   ask(query: string, opts: AskOptions = {}): Observable<AgentEvent> {
     if (environment.useMock) return this.mock.ask(query);
-    return this.stream(`${environment.apiBase}/api/v1/ask`, { query, stream: true, ...toBody(opts) });
+    return this.askJson(`${advisorBase()}/api/v1/ask`, { query, ...toBody(opts) });
   }
 
-  runScenario(scenarioId: string, prompt: string, opts: AskOptions = {}): Observable<AgentEvent> {
+  runScenario(_scenarioId: string, prompt: string, opts: AskOptions = {}): Observable<AgentEvent> {
     if (environment.useMock) return this.mock.ask(prompt);
-    return this.stream(
-      `${environment.apiBase}/api/v1/scenarios/${scenarioId}/run`,
-      { query: prompt, stream: true, ...toBody(opts) },
-    );
+    // There is no dedicated "run a scenario" endpoint on the real advisor —
+    // a scenario is just its prompt, asked like anything else.
+    return this.ask(prompt, opts);
   }
 
-  private stream(url: string, body: Record<string, unknown>): Observable<AgentEvent> {
+  private askJson(url: string, body: Record<string, unknown>): Observable<AgentEvent> {
     return new Observable<AgentEvent>((subscriber) => {
       const ctrl = new AbortController();
+      const startedAt = performance.now();
 
       (async () => {
         try {
           const res = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
             signal: ctrl.signal,
           });
-          if (!res.ok || !res.body) {
+          const json = await res.json().catch(() => null);
+
+          if (!json) {
             subscriber.next({ type: 'error', message: `Advisor returned ${res.status}` });
             subscriber.complete();
             return;
           }
-
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let buf = '';
-
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-
-            // SSE frames are separated by a blank line
-            let sep: number;
-            while ((sep = buf.indexOf('\n\n')) !== -1) {
-              const frame = buf.slice(0, sep);
-              buf = buf.slice(sep + 2);
-              const ev = parseFrame(frame);
-              if (ev) {
-                subscriber.next(ev);
-                if (ev.type === 'done' || ev.type === 'error') {
-                  ctrl.abort();
-                  subscriber.complete();
-                  return;
-                }
-              }
-            }
+          if (json.error) {
+            const e = json.error;
+            subscriber.next({
+              type: 'error',
+              code: typeof e === 'object' ? e.code : undefined,
+              message: typeof e === 'object' ? e.message : String(e),
+              hint: typeof e === 'object' ? e.hint : undefined,
+            });
+            subscriber.complete();
+            return;
           }
+
+          // devui's reference server wraps the documented contract under
+          // `.response` for its own debug view; the real /ask response is flat.
+          const r = json.response ?? json;
+
+          if (r.awaiting) {
+            subscriber.next({ type: 'awaiting', kind: r.awaiting, narrative: r.narrative ?? '' });
+          } else {
+            for (const t of r.trace ?? []) {
+              const id = crypto.randomUUID();
+              subscriber.next({ type: 'tool_call', id, tool: t.tool, args: t.args ?? {} });
+              subscriber.next({
+                type: 'tool_result', id, tool: t.tool,
+                summary: t.error ? `failed — ${t.error}` : 'ok',
+                data: t.result ?? null, ms: t.ms ?? 0,
+              });
+            }
+            subscriber.next({
+              type: 'answer',
+              tier: r.tier, intent: r.intent, entities: r.entities ?? {},
+              answer: r.answer, narrative: r.narrative ?? '',
+              citations: r.citations ?? [], confidence: r.confidence ?? 'medium',
+              unknowns: r.unknowns ?? [],
+            });
+          }
+
+          subscriber.next({
+            type: 'done',
+            elapsed_ms: Math.round(performance.now() - startedAt),
+            grounded: (r.unknowns ?? []).length === 0,
+          });
           subscriber.complete();
-        } catch (e) {
+        } catch {
           if (!ctrl.signal.aborted) {
             subscriber.next({ type: 'error', message: 'Lost connection to the advisor' });
           }
@@ -90,23 +115,16 @@ export class AdvisorService {
   }
 }
 
+/** The REST view layer and the advisor are different processes in dev (Gayathri's
+ * Flask on :5000 has no /ask route yet — issue #32). `advisorBase` lets the two
+ * be pointed at different hosts; falls back to `apiBase` once they're unified. */
+function advisorBase(): string {
+  return (environment as { advisorBase?: string }).advisorBase ?? environment.apiBase;
+}
+
 function toBody(opts: AskOptions): Record<string, unknown> {
   const b: Record<string, unknown> = {};
   if (opts.weights) b['weights'] = opts.weights;
   if (opts.asOf) b['as_of'] = opts.asOf;
   return b;
-}
-
-/** One `data:` line per frame; ignore the `event:` line (type is inside the JSON). */
-function parseFrame(frame: string): AgentEvent | null {
-  const dataLine = frame
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l.startsWith('data:'));
-  if (!dataLine) return null;
-  try {
-    return JSON.parse(dataLine.slice(5).trim()) as AgentEvent;
-  } catch {
-    return { type: 'error', message: 'Malformed event from server' };
-  }
 }

@@ -3,9 +3,16 @@ export const environment = {
   /**
    * The entire mock -> real integration step.
    * true  = scripted MockAdvisorService (works with zero backend)
-   * false = POST /api/v1/ask against api/mock.py (or the real api/app.py) via the dev-server proxy
+   * false = real REST (Gayathri's api/) + real advisor (Shashank's agent/, via devui.server)
    */
-  useMock: true,
-  /** Empty = same origin; the dev server proxies /api to :5000 (see proxy.conf.json). */
-  apiBase: '',
+  useMock: false,
+  /** The REST view layer — board/sidebar/crew/alerts. Gayathri's Flask app, `python -m api.app`. */
+  apiBase: 'http://localhost:5000',
+  /**
+   * The advisor — chat + accept/modify. Separate process from apiBase until
+   * `/ask` lands in api/app.py (issue #32); today this is Shashank's dev
+   * console: `AGENT_DATA=fixtures python -m devui.server` on :8420 (no DB,
+   * no API key needed — deterministic answer-key fixtures).
+   */
+  advisorBase: 'http://localhost:8420',
 };
