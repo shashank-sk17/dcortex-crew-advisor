@@ -4,17 +4,19 @@
 numpy>=1.26              # cosine index in agent/exemplars.py
 psycopg[binary]>=3.2     # Postgres reads in agent/tools_postgres.py and core/
 
-# Dev
-pytest>=8.0
+anthropic>=0.40          # agent/llm_anthropic.py — the default model backend
 
 flask>=3.0               # api/ — the real REST view layer
 flask-cors>=4.0
 python-dotenv>=1.0       # loads DATABASE_URL for api/db.py and agent/tools_postgres.py
 
-# Deliberately absent:
-#   anthropic   agent/llm.py is a placeholder; the local model goes through
-#               Ollama's HTTP API, which needs no SDK. Add this when the
-#               hosted client lands (issue #24).
+# Dev
+pytest>=8.0
+
+# Not required, and each is a real choice:
+#   groq / openai   agent/llm_groq.py speaks the OpenAI-compatible REST API
+#                   over plain HTTP, so neither SDK is needed to use Groq.
+#   ollama          agent/llm_ollama.py is HTTP against a local daemon.
 #
 # Deliberately absent for good (DECISIONS.md #1): the dataset is under 700 KB,
 # so no ORM, no Neo4j driver, no Mongo, no Celery.
