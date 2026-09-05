@@ -189,8 +189,8 @@ export class MockApiService implements ApiPort {
     const rest = clock?.last_rest_ended ?? null;
     return {
       crew_id: crewId, date,
-      duty_7d: round2(duty), duty_7d_headroom: round2(60 - duty),
-      flight_28d: round2(flt), flight_28d_headroom: round2(100 - flt),
+      duty_hours_7d: round2(duty), duty_7d_headroom: round2(60 - duty),
+      flight_hours_28d: round2(flt), flight_28d_headroom: round2(100 - flt),
       last_rest_ended: rest,
       rest_ok: rest ? (Date.parse(date + 'T00:00:00Z') - Date.parse(rest)) / 3_600_000 >= 12 : true,
       window: { start: start.toISOString().slice(0, 10), end: date },
@@ -230,7 +230,7 @@ export class MockApiService implements ApiPort {
       .sort((a, b) => b.disruption_risk_score - a.disruption_risk_score)
       .map((r) => ({
         crew_id: r.crew_id, name: this.ds.crewById.get(r.crew_id)?.name ?? r.crew_id,
-        disruption_risk_score: r.disruption_risk_score, drivers: r.drivers,
+        risk_score: r.disruption_risk_score, drivers: r.drivers,
       })));
   }
 

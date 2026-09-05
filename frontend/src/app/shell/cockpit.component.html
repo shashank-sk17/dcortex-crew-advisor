@@ -8,9 +8,15 @@
     <span class="spacer"></span>
     <label class="date">
       Day
-      <select [value]="state.date()" (change)="state.setDate($any($event.target).value)">
-        @for (d of state.meta()?.dates ?? []; track d) { <option [value]="d">{{ d }}</option> }
-      </select>
+      @if (state.meta()?.dates?.length) {
+        <select [value]="state.date()" (change)="state.setDate($any($event.target).value)">
+          @for (d of state.meta()!.dates!; track d) { <option [value]="d">{{ d }}</option> }
+        </select>
+      } @else {
+        <!-- the live /meta doesn't send a valid-dates list yet, so a constrained
+             dropdown has nothing to populate — a plain date input works either way -->
+        <input type="date" [value]="state.date()" (change)="state.setDate($any($event.target).value)" />
+      }
     </label>
     <span class="chip" [class.chip--warn]="mock" [class.chip--pass]="!mock">{{ mock ? 'MOCK' : 'LIVE' }}</span>
   </header>

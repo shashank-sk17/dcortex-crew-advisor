@@ -14,10 +14,17 @@ export class AppState {
   readonly date = signal<string>('2026-09-14');
   readonly meta = signal<Meta | null>(null);
 
+  /**
+   * The live GET /meta (api/meta_routes.py) returns only
+   * `{crew_count, flight_count, pairing_count, reserve_count}` today — no
+   * `dates`/`week`/`hub`/`currency`/`snapshot_utc`. `m.dates.includes(...)`
+   * unguarded threw on every real-backend page load; guarded here rather
+   * than fabricating a date range the backend hasn't sent.
+   */
   init(): void {
     this.api.meta().subscribe((m) => {
       this.meta.set(m);
-      if (!m.dates.includes(this.date())) this.date.set(m.week.start);
+      if (m.dates && m.week && !m.dates.includes(this.date())) this.date.set(m.week.start);
     });
   }
 

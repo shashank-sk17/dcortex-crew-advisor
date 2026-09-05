@@ -35,7 +35,8 @@ export class AlertsPanelComponent {
   constructor() {
     effect(() => {
       const d = this.state.date();
-      this.api.alerts(d, 'open').subscribe((a) => {
+      this.api.alerts(d, 'open').subscribe((raw) => {
+        const a = raw.map((x) => (x.title && x.detail ? x : { ...x, ...describe(x) }));
         this.alerts.set(a);
         // default-open the worst non-empty group so the highest-priority work is what greets you
         const first = (['critical', 'warning', 'info'] as Sev[]).find((s) => a.some((x) => x.severity === s));
@@ -65,7 +66,7 @@ export class AlertsPanelComponent {
     void this.router.navigateByUrl(link);
   }
   ack(a: Alert): void {
-    this.api.ackAlert(a.id).subscribe(() => this.patch(a.id, 'ack'));
+    this.api.ackAlert(a.id).subscribe(() => this.patch(a.id, 'acknowledged'));
   }
   resolve(a: Alert): void {
     this.api.resolveAlert(a.id).subscribe(() => this.patch(a.id, 'resolved'));
@@ -73,4 +74,28 @@ export class AlertsPanelComponent {
   private patch(id: string, status: Alert['status']): void {
     this.alerts.update((list) => list.map((x) => (x.id === id ? { ...x, status } : x)));
   }
+}
+
+/**
+ * The live GET /alerts sends a flat, type-specific shape with no
+ * title/detail at all (see the `Alert` doc comment in api.types.ts) — this
+ * derives the human-readable text the row needs from whichever
+ * type-specific fields actually arrived, instead of leaving it blank.
+ */
+function describe(a: Alert): { title: string; detail: string } {
+  if (a.type === 'certification_expiry' || a.cert_type) {
+    const label = (a.cert_type ?? 'certification').replace(/_/g, ' ');
+    return {
+      title: `${a.crew_id ?? a.subject?.id ?? 'Unknown crew'} — ${label} expiring`,
+      detail: `Valid to ${a.valid_to ?? '—'}` + (a.days_to_expiry != null ? ` · ${a.days_to_expiry}d left` : ''),
+    };
+  }
+  if (a.type === 'risk_signal' || a.risk_score != null) {
+    const pct = a.risk_score != null ? Math.round(a.risk_score * 100) : null;
+    return {
+      title: `${a.crew_id ?? a.subject?.id ?? 'Unknown crew'} — elevated disruption risk` + (pct != null ? ` (${pct}%)` : ''),
+      detail: a.drivers?.length ? a.drivers.join('; ') : 'No driver detail from the backend.',
+    };
+  }
+  return { title: a.title ?? a.type ?? 'Alert', detail: a.detail ?? '' };
 }

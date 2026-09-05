@@ -10,30 +10,40 @@
     </div>
   </div>
 
-  <div class="tbl">
-    <div class="tr th">
-      <span>rank</span><span>flight</span><span>route</span><span>dep→arr (UTC)</span>
-      <span>tail</span><span>slack</span><span>down</span>
+  @if (listLoading()) {
+    <div class="loading-row"><span class="spinner"></span> Loading flights…</div>
+  } @else {
+    <div class="tbl">
+      <div class="tr th">
+        <span>rank</span><span>flight</span><span>route</span><span>dep→arr (UTC)</span>
+        <span>tail</span><span>slack</span><span>down</span>
+      </div>
+      @for (f of rows(); track f.flight_id) {
+        <button class="tr" [class.sel]="selectedId() === f.flight_id"
+                [attr.data-rank]="f.delay_rank" (click)="select(f)">
+          <span class="dot" [attr.data-rank]="f.delay_rank" [title]="f.delay_rank_reasons.join('; ')"></span>
+          <span class="mono">{{ f.flight_no }}</span>
+          <span>{{ f.dep_station }}→{{ f.arr_station }}</span>
+          <span class="mono sm">{{ f.dep_utc | date: 'HH:mm' : 'UTC' }}–{{ f.arr_utc | date: 'HH:mm' : 'UTC' }}</span>
+          <span class="mono sm">{{ f.aircraft }}</span>
+          <span class="mono sm" [class.tight]="f.slack_minutes != null && f.slack_minutes < 45">
+            {{ f.slack_minutes == null ? '—' : f.slack_minutes + 'm' }}
+          </span>
+          <span class="mono sm">{{ f.downstream_count }}</span>
+        </button>
+      }
     </div>
-    @for (f of rows(); track f.flight_id) {
-      <button class="tr" [class.sel]="selectedId() === f.flight_id"
-              [attr.data-rank]="f.delay_rank" (click)="select(f)">
-        <span class="dot" [attr.data-rank]="f.delay_rank" [title]="f.delay_rank_reasons.join('; ')"></span>
-        <span class="mono">{{ f.flight_no }}</span>
-        <span>{{ f.dep_station }}→{{ f.arr_station }}</span>
-        <span class="mono sm">{{ f.dep_utc | date: 'HH:mm' : 'UTC' }}–{{ f.arr_utc | date: 'HH:mm' : 'UTC' }}</span>
-        <span class="mono sm">{{ f.aircraft }}</span>
-        <span class="mono sm" [class.tight]="f.slack_minutes != null && f.slack_minutes < 45">
-          {{ f.slack_minutes == null ? '—' : f.slack_minutes + 'm' }}
-        </span>
-        <span class="mono sm">{{ f.downstream_count }}</span>
-      </button>
-    }
-  </div>
+  }
 </div>
 
-@if (detail(); as d) {
-  <app-modal [label]="d.flight_no + ' details'" (closed)="close()">
+@if (selectedId()) {
+  <app-modal [label]="(detail()?.flight_no ?? selectedId()) + ' details'" (closed)="close()">
+    @if (detailLoading()) {
+      <div class="loading-row"><span class="spinner"></span> Loading flight detail…</div>
+    } @else if (detailError()) {
+      <div class="loading-row">{{ detailError() }}</div>
+    } @else {
+    @if (detail(); as d) {
     <div class="drawer">
       <div class="drawer__head">
         <div class="drawer__title">{{ d.flight_no }}</div>
@@ -85,5 +95,7 @@
         </div>
       }
     </div>
+    }
+    }
   </app-modal>
 }

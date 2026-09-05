@@ -32,9 +32,15 @@ export class SidebarComponent {
   constructor() {
     effect(() => {
       const d = this.state.date();
-      this.api.summary(d).subscribe((s) => this.summary.set(s));
+      this.api.summary(d).subscribe({
+        next: (s) => this.summary.set(s),
+        error: () => this.summary.set(null),
+      });
     });
-    this.api.riskSignals(0.5).subscribe((r) => this.risk.set(r.slice(0, 8)));
+    this.api.riskSignals(0.5).subscribe({
+      next: (r) => this.risk.set(r.slice(0, 8)),
+      error: () => this.risk.set([]),
+    });
   }
 
   toggle(s: Section): void {

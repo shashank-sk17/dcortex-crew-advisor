@@ -7,7 +7,7 @@ export const environment = {
    */
   useMock: false,
   /** The REST view layer — board/sidebar/crew/alerts. Gayathri's Flask app, `python -m api.app`. */
-  apiBase: 'http://localhost:5000',
+  apiBase: 'http://127.0.0.1:5000',
   /**
    * The advisor — chat + accept/modify. Separate process from apiBase until
    * `/ask` lands in api/app.py (issue #32); today this is Shashank's dev

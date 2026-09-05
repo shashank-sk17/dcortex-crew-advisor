@@ -31,15 +31,15 @@
         </div>
       </app-accordion-item>
 
-      <app-accordion-item title="Passengers affected" [badge]="s.flights.pax_affected" [open]="openSection() === 'pax'" (toggle)="toggle('pax')">
+      <app-accordion-item title="Passengers affected" [badge]="s.flights.pax_affected ?? 0" [open]="openSection() === 'pax'" (toggle)="toggle('pax')">
         <div class="pax">
-          @for (f of s.flights.disrupted; track f.flight_id) {
+          @for (f of s.flights.disrupted ?? []; track f.flight_id) {
             <a class="pax__row" routerLink="/board" [queryParams]="{ flight: f.flight_id }">
               <span><span class="mono">{{ f.flight_no }}</span> <span class="pax__route">{{ f.route }}</span></span>
               <b>{{ f.pax }}</b>
             </a>
           }
-          @if (!s.flights.disrupted.length) { <p class="muted sm">No disrupted flights right now.</p> }
+          @if (!(s.flights.disrupted ?? []).length) { <p class="muted sm">No disrupted flights right now.</p> }
         </div>
       </app-accordion-item>
 
@@ -59,9 +59,9 @@
         @for (r of risk(); track r.crew_id) {
           <a class="risk__row" [routerLink]="['/crew', r.crew_id]">
             <div class="risk__top">
-              <span><span class="mono">{{ r.crew_id }}</span> <span class="risk__name">{{ r.name }}</span></span>
-              <span class="risk__score" [class.hot]="r.disruption_risk_score >= 0.7">
-                {{ r.disruption_risk_score | number: '1.2-2' }}
+              <span><span class="mono">{{ r.crew_id }}</span> <span class="risk__name">{{ r.name ?? '' }}</span></span>
+              <span class="risk__score" [class.hot]="r.risk_score >= 0.7">
+                {{ r.risk_score | number: '1.2-2' }}
               </span>
             </div>
             @if (r.drivers.length) { <div class="risk__why">{{ r.drivers[0] }}</div> }

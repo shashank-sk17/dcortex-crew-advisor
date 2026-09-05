@@ -12,14 +12,20 @@ export type RuleStatus = 'PASS' | 'FAIL' | 'NOT_APPLICABLE';
 
 /* ---------------------------------------------------------------- reference */
 
-/** Snapshot instant, week bounds and row counts — lets the app configure its date picker. */
+/**
+ * Snapshot instant, week bounds and row counts — lets the app configure its
+ * date picker. The live `GET /meta` (api/meta_routes.py) returns only
+ * `{crew_count, flight_count, pairing_count, reserve_count}` today — none of
+ * the fields below exist on the wire yet. Marked optional so the date-picker
+ * degrades (falls back to the hardcoded default date) instead of throwing.
+ */
 export interface Meta {
-  snapshot_utc: IsoUtc;
-  week: { start: IsoDate; end: IsoDate };
-  hub: string;
-  currency: string;
-  counts: { crew: number; flights: number; pairings: number; reserves: number };
-  dates: IsoDate[];
+  snapshot_utc?: IsoUtc;
+  week?: { start: IsoDate; end: IsoDate };
+  hub?: string;
+  currency?: string;
+  counts?: { crew: number; flights: number; pairings: number; reserves: number };
+  dates?: IsoDate[];
 }
 
 /** One legality rule with its machine params and a plain-English gloss for popovers. */
@@ -192,16 +198,20 @@ export interface CrewRow {
 }
 
 /** The calendar-day duty/flight window sums and rest state for a given date. */
+/** Field names match the live `GET /crew/{id}/duty-clock` (api/crew_routes.py)
+ * response verbatim — it uses `duty_hours_7d`/`flight_hours_28d`, not the
+ * `duty_7d`/`flight_28d` this was previously typed with, and sends no `window`. */
 export interface DutyClock {
   crew_id: string;
   date: IsoDate;
-  duty_7d: number;
+  as_of_utc?: IsoUtc;
+  duty_hours_7d: number;
   duty_7d_headroom: number;
-  flight_28d: number;
+  flight_hours_28d: number;
   flight_28d_headroom: number;
   last_rest_ended: IsoUtc | null;
   rest_ok: boolean;
-  window: { start: IsoDate; end: IsoDate };
+  window?: { start: IsoDate; end: IsoDate };
 }
 
 /** One certification with how many days of validity remain on the working date. */
@@ -223,15 +233,26 @@ export interface CrewAssignment {
   role: string;
 }
 
-/** Everything the crew drawer needs — the row plus duty clock, certs, risk and assignments. */
-export interface CrewDetail extends CrewRow {
+/**
+ * Everything the crew drawer wants — the row plus duty clock, certs, risk and
+ * assignments. `CrewRow`'s own fields and everything below are marked optional:
+ * the live `GET /crew/{id}` (api/crew_routes.py) returns only
+ * `{base, crew_id, name, rank, ratings, reachability_minutes, seniority,
+ * status}` today — none of `attention`, `duty_clock`, `certifications`,
+ * `risk`, `reserve_window`, `assignments`, or the rest of `CrewRow` exist on
+ * the wire yet. Do not widen this back to required without confirming the
+ * backend actually sends it — the drawer degrades to "not available" per
+ * section rather than crashing, but a required type would silently lie again.
+ */
+export interface CrewDetail extends Partial<CrewRow> {
+  crew_id: string;
   seniority: number;
   reachability_minutes: number;
-  duty_clock: DutyClock;
-  certifications: CertRow[];
-  risk: { score: number; drivers: string[] };
-  reserve_window: { start: string; end: string } | null;
-  assignments: CrewAssignment[];
+  duty_clock?: DutyClock;
+  certifications?: CertRow[];
+  risk?: { score: number; drivers: string[] };
+  reserve_window?: { start: string; end: string } | null;
+  assignments?: CrewAssignment[];
 }
 
 /** A reserve crew member and whether their on-call window covers a required report time. */
@@ -249,22 +270,43 @@ export interface Reserve {
 
 export type AlertType =
   | 'DUTY_LIMIT_NEAR' | 'CERT_EXPIRING' | 'FLIGHT_AT_RISK' | 'RESERVE_POOL_LOW'
-  | 'ROSTER_EXCEPTION' | 'DISRUPTION_REPORTED' | 'RESOLUTION_PROPOSED';
+  | 'ROSTER_EXCEPTION' | 'DISRUPTION_REPORTED' | 'RESOLUTION_PROPOSED'
+  // the live GET /alerts (api/alert_routes.py) sends these instead
+  | 'certification_expiry' | 'risk_signal';
 export type AlertSeverity = 'critical' | 'warning' | 'info';
-export type AlertState = 'open' | 'ack' | 'resolved';
+export type AlertState = 'open' | 'ack' | 'resolved' | 'acknowledged';
 
-/** A human-in-the-loop item for the day — what's wrong, how bad, and the fastest way to act. */
+/**
+ * A human-in-the-loop item for the day — what's wrong, how bad, and the
+ * fastest way to act. The live backend sends a much flatter, type-specific
+ * shape than this — no `subject`/`title`/`detail`/`created_utc`/
+ * `suggested_action`/`payload` at all, just `crew_id` plus fields particular
+ * to `type` (`cert_type`/`valid_to`/`days_to_expiry` for
+ * `certification_expiry`; `as_of_utc`/`drivers`/`risk_score` for
+ * `risk_signal`). Everything below is optional so the UI can synthesize a
+ * title/detail from whichever type-specific fields actually arrived —
+ * see AlertsPanelComponent.describe() — rather than pretend they're absent.
+ */
 export interface Alert {
   id: string;
   type: AlertType;
   severity: AlertSeverity;
-  subject: { kind: 'crew' | 'flight' | 'pairing' | 'station' | 'reserve_pool'; id: string };
-  title: string;
-  detail: string;
-  created_utc: IsoUtc;
   status: AlertState;
-  suggested_action: { label: string; ask_prompt?: string; deep_link?: string } | null;
-  payload: Option[] | null;
+  subject?: { kind: 'crew' | 'flight' | 'pairing' | 'station' | 'reserve_pool'; id: string };
+  crew_id?: string;
+  title?: string;
+  detail?: string;
+  created_utc?: IsoUtc;
+  suggested_action?: { label: string; ask_prompt?: string; deep_link?: string } | null;
+  payload?: Option[] | null;
+  // certification_expiry
+  cert_type?: string;
+  valid_to?: IsoDate;
+  days_to_expiry?: number;
+  // risk_signal
+  as_of_utc?: IsoUtc;
+  drivers?: string[];
+  risk_score?: number;
 }
 
 /* ---------------------------------------------------------------- sidebar */
@@ -275,10 +317,13 @@ export interface Summary {
   crew: { on_duty: number; off_duty: number; reserve: number; needs_attention: number };
   flights: {
     total: number; on_time: number; at_risk: number; delayed: number; cancelled: number;
-    /** Sum of seats across today's critical/high delay_rank flights — the disruption's pax footprint. */
-    pax_affected: number;
-    /** One row per critical/high delay_rank flight — the breakdown behind pax_affected. */
-    disrupted: { flight_id: string; flight_no: string; route: string; pax: number }[];
+    /** Sum of seats across today's critical/high delay_rank flights — the disruption's pax
+     * footprint. Optional: the live `GET /summary` (api/summary_routes.py) doesn't send this
+     * field at all yet — only the mock computes it. */
+    pax_affected?: number;
+    /** One row per critical/high delay_rank flight — the breakdown behind pax_affected.
+     * Same live-backend gap as pax_affected above. */
+    disrupted?: { flight_id: string; flight_no: string; route: string; pax: number }[];
   };
   alerts: { critical: number; warning: number };
   reserves: { by_base_role: Record<string, number>; depleted: string[] };
@@ -286,11 +331,16 @@ export interface Summary {
   stations: { closures: { code: string; start_utc: IsoUtc; end_utc: IsoUtc; reason: string }[] };
 }
 
-/** A pre-computed per-crew disruption-risk score with its drivers — a provided input, not a model. */
+/**
+ * A pre-computed per-crew disruption-risk score with its drivers — a provided
+ * input, not a model. The live `GET /risk-signals` (api/risk_signal_routes.py)
+ * sends `risk_score`, not `disruption_risk_score`, and no `name` at all —
+ * `name` is optional here; the sidebar falls back to `crew_id`.
+ */
 export interface RiskSignal {
   crew_id: string;
-  name: string;
-  disruption_risk_score: number;
+  name?: string;
+  risk_score: number;
   drivers: string[];
 }
 

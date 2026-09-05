@@ -175,6 +175,18 @@ input, textarea, select { font: inherit; color: var(--ink); }
 @keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
 
+/* shared loading state — flight/crew detail drawers while the real backend answers */
+.loading-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 20px 4px; color: var(--ink-2); font-size: 13.5px;
+}
+.spinner {
+  width: 16px; height: 16px; flex: none; border-radius: 50%;
+  border: 2px solid var(--hairline); border-top-color: var(--accent);
+  animation: spin 700ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

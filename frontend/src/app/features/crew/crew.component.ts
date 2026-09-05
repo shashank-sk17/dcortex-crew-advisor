@@ -5,7 +5,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { API } from '../../core/api.port';
 import { AppState } from '../../core/app-state';
 import { AdvisorBus } from '../advisor/advisor-bus';
-import { CrewDetail, CrewFilter, CrewRow, RuleVerdict } from '../../core/api.types';
+import { CrewDetail, CrewFilter, CrewRow, DutyClock, RuleVerdict } from '../../core/api.types';
 import { ModalComponent } from '../../components/modal.component';
 
 const FILTERS: { key: CrewFilter; label: string }[] = [
@@ -44,8 +44,14 @@ export class CrewComponent {
   readonly role = signal<string | null>(null);
   readonly q = signal<string>('');
   readonly rows = signal<CrewRow[]>([]);
+  readonly listLoading = signal(false);
   readonly selectedId = signal<string | null>(null);
   readonly detail = signal<CrewDetail | null>(null);
+  readonly detailLoading = signal(false);
+  readonly detailError = signal<string | null>(null);
+  /** Fetched separately from crewDetail(): GET /crew/{id} doesn't return
+   * duty_clock on the live backend, but GET /crew/{id}/duty-clock does. */
+  readonly dutyClock = signal<DutyClock | null>(null);
   readonly verdicts = signal<RuleVerdict[] | null>(null);
   readonly checkedPairing = signal<string>('');
 
@@ -66,7 +72,11 @@ export class CrewComponent {
       const filter = this.filter();
       const role = this.role() ?? undefined;
       const query = this.q() || undefined;
-      this.api.crew({ date, filter, role, q: query }).subscribe((r) => this.rows.set(r));
+      this.listLoading.set(true);
+      this.api.crew({ date, filter, role, q: query }).subscribe({
+        next: (r) => { this.listLoading.set(false); this.rows.set(r); },
+        error: () => { this.listLoading.set(false); this.rows.set([]); },
+      });
     });
   }
 
@@ -76,12 +86,27 @@ export class CrewComponent {
 
   select(id: string): void {
     this.selectedId.set(id);
+    this.detail.set(null);
+    this.detailError.set(null);
+    this.detailLoading.set(true);
+    this.dutyClock.set(null);
     this.verdicts.set(null);
-    this.api.crewDetail(id, this.state.date()).subscribe((d) => this.detail.set(d));
+    this.api.crewDetail(id, this.state.date()).subscribe({
+      next: (d) => { this.detail.set(d); this.detailLoading.set(false); },
+      error: () => {
+        this.detailLoading.set(false);
+        this.detailError.set('Could not load crew detail — the backend may be unreachable.');
+      },
+    });
+    this.api.dutyClock(id, this.state.date()).subscribe({
+      next: (dc) => this.dutyClock.set(dc),
+      error: () => {}, // shown as "not available" in the template — not fatal to the drawer
+    });
   }
   close(): void {
     this.selectedId.set(null);
     this.detail.set(null);
+    this.detailError.set(null);
     void this.router.navigate(['/crew']);
   }
   checkLegality(crewId: string, pairingId: string): void {

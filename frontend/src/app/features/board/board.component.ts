@@ -30,8 +30,11 @@ export class BoardComponent {
 
   readonly ranks: DelayRank[] = ['critical', 'high', 'medium', 'low'];
   readonly rankFilter = signal<DelayRank | null>(null);
+  readonly listLoading = signal(false);
   readonly selectedId = signal<string | null>(null);
   readonly detail = signal<FlightDetail | null>(null);
+  readonly detailLoading = signal(false);
+  readonly detailError = signal<string | null>(null);
   readonly down = signal<DownstreamLeg[]>([]);
   readonly cover = signal<CandidateResult | null>(null);
 
@@ -46,13 +49,18 @@ export class BoardComponent {
   constructor() {
     effect(() => {
       const d = this.state.date();
-      this.api.flights({ date: d }).subscribe((rows) => {
-        this.all.set(rows);
-        const want = this.qp()?.get('flight');
-        if (want && rows.some((r) => r.flight_id === want)) {
-          const row = rows.find((r) => r.flight_id === want)!;
-          this.select(row);
-        }
+      this.listLoading.set(true);
+      this.api.flights({ date: d }).subscribe({
+        next: (rows) => {
+          this.listLoading.set(false);
+          this.all.set(rows);
+          const want = this.qp()?.get('flight');
+          if (want && rows.some((r) => r.flight_id === want)) {
+            const row = rows.find((r) => r.flight_id === want)!;
+            this.select(row);
+          }
+        },
+        error: () => { this.listLoading.set(false); this.all.set([]); },
       });
     });
   }
@@ -63,17 +71,31 @@ export class BoardComponent {
 
   select(f: FlightRow): void {
     this.selectedId.set(f.flight_id);
+    this.detail.set(null);
+    this.detailError.set(null);
+    this.detailLoading.set(true);
     this.cover.set(null);
-    this.api.flight(f.flight_id).subscribe((d) => this.detail.set(d));
-    this.api.downstream(f.flight_id, 90).subscribe((l) => this.down.set(l));
+    this.down.set([]);
+    this.api.flight(f.flight_id).subscribe({
+      next: (d) => { this.detail.set(d); this.detailLoading.set(false); },
+      error: () => {
+        this.detailLoading.set(false);
+        this.detailError.set('Could not load flight detail — the backend may be unreachable.');
+      },
+    });
+    this.api.downstream(f.flight_id, 90).subscribe({ next: (l) => this.down.set(l), error: () => {} });
     if (f.pairing_id) {
-      this.api.candidates(f.pairing_id, 'Captain', f.dep_utc).subscribe((c) => this.cover.set(c));
+      this.api.candidates(f.pairing_id, 'Captain', f.dep_utc).subscribe({
+        next: (c) => this.cover.set(c),
+        error: () => {},
+      });
     }
   }
 
   close(): void {
     this.selectedId.set(null);
     this.detail.set(null);
+    this.detailError.set(null);
   }
 
   askCover(d: FlightDetail): void {
