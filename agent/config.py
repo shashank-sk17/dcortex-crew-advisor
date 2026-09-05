@@ -14,9 +14,10 @@ from pathlib import Path
 # PLACEHOLDER: no network calls are made anywhere in this package yet. These
 # ids are recorded so the swap in `agent/llm.py` is a one-line change per role.
 # --------------------------------------------------------------------------
-ROUTER_MODEL = "claude-haiku-4-5-20251001"  # cheap classification
-ADVISOR_MODEL = "claude-sonnet-5"           # the tool loop
-EXPLAINER_MODEL = "claude-sonnet-5"         # answer object -> prose
+# Model ids are complete as written — never append a date suffix.
+ROUTER_MODEL = "claude-haiku-4-5"   # cheap classification, when rules abstain
+ADVISOR_MODEL = "claude-opus-5"     # the tool loop
+EXPLAINER_MODEL = "claude-opus-5"   # answer object -> prose
 
 MAX_TOOL_ITERATIONS = 8  # hard stop on the tool loop; a tier-3 ask needs ~5
 

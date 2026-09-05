@@ -180,6 +180,9 @@ def render_replacement(answer: ReplacementAnswer) -> str:
         if alternatives:
             lines.append("\nAlternatives:")
             lines += [f"  {render_option(o)}" for o in alternatives]
+            if answer.next_tier_premium_inr:
+                lines.append(f"  ({_inr(answer.next_tier_premium_inr)} more "
+                             f"than the recommended option.)")
 
         if cancel:
             # The contrast, not a row. Cancellation is an order of magnitude

@@ -115,10 +115,18 @@ class CoreToolPort(PostgresToolPort):
         cancel_cost = options[-1]["cost_inr"]
         recommended = next((o for o in options if o["crew_id"]), None)
 
+        # Deltas the prose will reach for, computed here so they are sourced.
+        # Claude drafted "5,500 more" (24,000 - 18,500) unprompted: correct
+        # arithmetic, but no tool produced it, so the verifier discarded the
+        # whole answer. A better model computes a *right* number and is still
+        # rejected — sourcing is the test, not correctness.
+        tiers = sorted({o["cost_inr"] for o in options if o["crew_id"]})
         return {
             "pairing_id": pairing_id,
             "role": role,
             "recommended": recommended,
+            "next_tier_cost_inr": tiers[1] if len(tiers) > 1 else 0,
+            "next_tier_premium_inr": (tiers[1] - tiers[0]) if len(tiers) > 1 else 0,
             "cancellation_multiple": round(cancel_cost / cheapest) if cheapest else 0,
             "equal_cost_alternatives": sum(
                 1 for o in options if o["crew_id"] and o["cost_inr"] == cheapest) - 1,

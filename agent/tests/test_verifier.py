@@ -221,3 +221,57 @@ class TestErrorTextIsEvidence:
         t = [TraceEntry(tool="find_options",
                         error="UNRESOLVED_ENTITY: no fixture covers P-2218")]
         assert not verify("Cannot answer: no fixture covers P-9999.", t).ok
+
+
+class TestDerivedNumbers:
+    """A number computed from evidence is not a fabrication.
+
+    Claude drafted "₹5,500 more than the recommended option" — 24,000 − 18,500,
+    both verified. Rejecting it discarded a correct, useful answer. A false
+    positive costs as much as a false negative: it throws away good work and
+    teaches people to ignore the gate.
+
+    The earlier instinct was to precompute that one delta in the engine. That
+    is a workaround — it fixes the instance and leaves the defect, so the next
+    derived figure fails identically.
+    """
+
+    def _options(self):
+        return [TraceEntry(tool="find_options",
+                           result={"options": [{"cost_inr": 18500},
+                                               {"cost_inr": 24000}]})]
+
+    def test_difference_is_accepted_and_labelled(self):
+        r = verify("That is 5,500 more than the recommended option.", self._options())
+        assert r.ok
+        claim = next(c for c in r.claims if c.value == "5,500")
+        assert claim.status == "derived"
+        assert "24000 - 18500" in claim.derivation
+
+    def test_sum_is_accepted(self):
+        assert verify("Together they come to 42,500.", self._options()).ok
+
+    def test_a_number_that_derives_from_nothing_still_fails(self):
+        r = verify("It costs 7,300 more.", self._options())
+        assert not r.ok
+        assert r.unsupported[0].value == "7,300"
+
+    def test_directly_returned_values_are_sourced_not_derived(self):
+        r = verify("The reserve callout is 18,500.", self._options())
+        assert next(c for c in r.claims if c.value == "18,500").status == "sourced"
+
+    def test_derivation_needs_both_operands_in_evidence(self):
+        """One evidence number plus an invented one must not derive."""
+        t = [TraceEntry(tool="lookup", result={"cost_inr": 18500})]
+        assert not verify("That is 5,500 more.", t).ok
+
+    def test_summary_reports_how_many_were_derived(self):
+        r = verify("That is 5,500 more.", self._options())
+        assert "derived" in r.summary()
+
+    def test_small_numbers_are_not_derived_into_existence(self):
+        """The claim floor still applies — prose integers are not claims, and
+        must not become a back door for arbitrary arithmetic."""
+        from agent.verifier import build_evidence
+
+        assert build_evidence(self._options()).derive(5.0) is None

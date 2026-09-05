@@ -265,6 +265,8 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
         return ReplacementAnswer(
             recommended=rec[0] if rec else None,
             cancellation_multiple=found.get("cancellation_multiple", 0),
+            next_tier_cost_inr=found.get("next_tier_cost_inr", 0),
+            next_tier_premium_inr=found.get("next_tier_premium_inr", 0),
             equal_cost_alternatives=found.get("equal_cost_alternatives", 0),
             uncovered_flights=rippled.get("uncovered_flights", []),
             at_risk_flights=rippled.get("at_risk_flights", []),
@@ -364,18 +366,25 @@ class Advisor:
                 # Every requested call was a repeat: the model is looping and
                 # has no new evidence to gather. Stop rather than burn the cap.
                 break
+            # Anthropic requires an id on every tool_use and a matching
+            # tool_use_id on its result. The OpenAI-compatible backends
+            # flatten these to text and ignore the ids, so carrying them
+            # costs nothing there and is mandatory here.
+            executed = turn.trace[-len(response.tool_calls):]
             messages.append({
                 "role": "assistant",
                 "content": [
-                    {"type": "tool_use", "name": c.name, "input": c.args}
+                    {"type": "tool_use", "id": c.id, "name": c.name, "input": c.args}
                     for c in response.tool_calls
                 ],
             })
             messages.append({
                 "role": "user",
                 "content": [
-                    {"type": "tool_result", "content": str(e.result or e.error)}
-                    for e in turn.trace[-len(response.tool_calls):]
+                    {"type": "tool_result", "tool_use_id": c.id,
+                     "content": str(e.result if e.result is not None else e.error),
+                     **({"is_error": True} if e.error else {})}
+                    for c, e in zip(response.tool_calls, executed)
                 ],
             })
 

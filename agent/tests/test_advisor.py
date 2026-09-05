@@ -151,10 +151,17 @@ class TestExemplars:
             pytest.skip("dataset not vendored")
         assert len(block) // 4 < 2000
 
-    def test_system_prompt_inlines_exemplars(self):
+    def test_advisor_prompt_omits_exemplars_by_default(self):
+        """836 of 2,250 input tokens per call were exemplars the advisor never
+        reads — the router classifies 38/38 without a model at all."""
         prompt = system_prompt(Intent.FIND_REPLACEMENT)
-        assert "Worked examples" in prompt
+        assert "Worked examples" not in prompt
         assert "This request" in prompt
+
+    def test_exemplars_available_when_asked_for(self):
+        """The router's fallback path is the one caller that wants them."""
+        assert "Worked examples" in system_prompt(Intent.FIND_REPLACEMENT,
+                                                  with_exemplars=True)
 
     def test_index_returns_contrast_across_tiers(self):
         index = ExemplarIndex()

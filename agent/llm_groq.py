@@ -30,7 +30,50 @@ from typing import Any, Iterator
 from agent.llm import LLMResponse, StreamEvent, ToolCall
 from agent.llm_ollama import _coerce_args, _schema_for, _to_ollama_tools
 
-BASE_URL = "https://api.groq.com/openai/v1"
+# Every provider below speaks the OpenAI chat-completions shape, so switching
+# is a base_url and a model id — the client does not change. Measured limits
+# are noted only where we have actually hit them; the rest should be checked
+# at signup rather than trusted from here.
+PROVIDERS: dict[str, dict[str, str]] = {
+    "groq": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "key_env": "GROQ_API_KEY",
+        "model": "qwen/qwen3.6-27b",
+        "note": "measured: 7,000 input tokens/min on the free tier, ~3 questions/min",
+    },
+    "cerebras": {
+        "base_url": "https://api.cerebras.ai/v1",
+        "key_env": "CEREBRAS_API_KEY",
+        "model": "qwen-3-32b",
+        "note": "very fast; free tier limits unverified",
+    },
+    "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "key_env": "OPENROUTER_API_KEY",
+        "model": "qwen/qwen3-32b",
+        "note": "aggregator; some models have a :free variant",
+    },
+    "together": {
+        "base_url": "https://api.together.xyz/v1",
+        "key_env": "TOGETHER_API_KEY",
+        "model": "Qwen/Qwen3-32B",
+        "note": "pay as you go, small starting credit",
+    },
+    "fireworks": {
+        "base_url": "https://api.fireworks.ai/inference/v1",
+        "key_env": "FIREWORKS_API_KEY",
+        "model": "accounts/fireworks/models/qwen3-30b-a3b",
+        "note": "pay as you go",
+    },
+    "mistral": {
+        "base_url": "https://api.mistral.ai/v1",
+        "key_env": "MISTRAL_API_KEY",
+        "model": "mistral-large-latest",
+        "note": "free tier available",
+    },
+}
+
+BASE_URL = PROVIDERS["groq"]["base_url"]
 # Cloudflare in front of Groq rejects the default `Python-urllib/3.x` agent
 # with a 403 (error 1010). Any conventional agent string is accepted.
 USER_AGENT = "dcortex-crew-advisor/0.1"
@@ -55,16 +98,35 @@ class GroqError(RuntimeError):
     pass
 
 
-def load_api_key() -> str | None:
-    """`GROQ_API_KEY` from the environment, else from a local .env."""
-    if key := os.environ.get("GROQ_API_KEY"):
+def load_api_key(env_name: str = "GROQ_API_KEY") -> str | None:
+    """A key from the environment, else from a local gitignored .env."""
+    if key := os.environ.get(env_name):
         return key
     env = REPO_ROOT / ".env"
     if env.exists():
         for line in env.read_text(encoding="utf-8").splitlines():
-            if line.startswith("GROQ_API_KEY="):
+            if line.startswith(f"{env_name}="):
                 return line.split("=", 1)[1].strip()
     return None
+
+
+def for_provider(name: str, model: str | None = None, **kw: "Any") -> "GroqLLM":
+    """Build a client for any OpenAI-compatible provider.
+
+    >>> for_provider("cerebras").base_url
+    'https://api.cerebras.ai/v1'
+    """
+    spec = PROVIDERS.get(name)
+    if spec is None:
+        raise GroqError(
+            f"unknown provider {name!r}; known: {', '.join(sorted(PROVIDERS))}"
+        )
+    return GroqLLM(
+        model=model or spec["model"],
+        api_key=load_api_key(spec["key_env"]),
+        base_url=spec["base_url"],
+        **kw,
+    )
 
 
 class GroqLLM:

@@ -39,16 +39,25 @@ STATIC = Path(__file__).resolve().parent / "static"
 PORT = 8420
 
 # Backends, chosen by env var so the same console drives every combination:
-#   AGENT_LLM   placeholder (default) | ollama | groq
+#   AGENT_LLM   placeholder | anthropic (recommended) | groq | ollama
 #   AGENT_DATA  json (default)        | postgres
 LLM_KIND = os.environ.get("AGENT_LLM", "placeholder").lower()
 DATA_KIND = os.environ.get("AGENT_DATA", "json").lower()
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:8b")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3.6-27b")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5")
 
 
 def make_llm() -> tuple[Any, str]:
     """Return the configured client and a label for the status bar."""
+    if LLM_KIND in ("anthropic", "claude"):
+        from agent.llm_anthropic import AnthropicError, AnthropicLLM
+
+        try:
+            client = AnthropicLLM(ANTHROPIC_MODEL)
+        except AnthropicError as exc:
+            return PlaceholderLLM(), f"anthropic unavailable ({exc}) — using placeholder"
+        return client, f"anthropic {ANTHROPIC_MODEL}"
     if LLM_KIND == "groq":
         from agent.llm_groq import GroqLLM
 
@@ -210,9 +219,9 @@ def run_pipeline(query: str) -> dict[str, Any]:  # noqa: C901
                 "key": "explainer",
                 "name": "Explainer",
                 "status": _stage_status(bool(response.narrative),
-                                        LLM_KIND not in ("ollama", "groq")),
+                                        LLM_KIND == "placeholder"),
                 "summary": (
-                    "model-polished" if LLM_KIND in ("ollama", "groq")
+                    "model-polished" if LLM_KIND != "placeholder"
                     else "template renderer (no model configured)"
                 ),
                 "detail": {"narrative": response.narrative},
@@ -252,7 +261,9 @@ def build_state() -> dict[str, Any]:
         tools.append({"name": name, "live": live})
 
     return {
-        "llm": {"live": LLM_KIND in ("ollama", "groq") and "unreachable" not in llm_label,
+        "llm": {"live": LLM_KIND != "placeholder"
+                        and "unreachable" not in llm_label
+                        and "unavailable" not in llm_label,
                 "model": llm_label},
         "data": {"live": "postgres" in port_label, "source": port_label},
         "tools": tools,

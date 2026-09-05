@@ -24,13 +24,22 @@ def _read(name: str) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
-@lru_cache(maxsize=1)
-def base_system_prompt() -> str:
-    """Role, constraints, rulebook summary and every worked exemplar."""
+@lru_cache(maxsize=2)
+def base_system_prompt(with_exemplars: bool = False) -> str:
+    """Role, constraints and the rulebook.
+
+    Exemplars are **off by default**. They exist to help classify an intent,
+    and the router classifies 38/38 without a model at all — so shipping them
+    on every tool-loop call spent 836 of 2,250 input tokens on context the
+    advisor never reads. On Groq's free tier that is the difference between
+    three and five calls a minute.
+
+    The router's own fallback path asks for them explicitly.
+    """
     from agent.exemplars import exemplar_block
 
     parts = [_read("system.md")]
-    if block := exemplar_block():
+    if with_exemplars and (block := exemplar_block()):
         parts.append(
             "\n## Worked examples\n\nIdentifiers are masked; these show the "
             "*shape* of each tier, not specific answers.\n" + block
@@ -38,10 +47,10 @@ def base_system_prompt() -> str:
     return "\n".join(p for p in parts if p).strip()
 
 
-@lru_cache(maxsize=16)
-def system_prompt(intent: Intent | None = None) -> str:
+@lru_cache(maxsize=32)
+def system_prompt(intent: Intent | None = None, with_exemplars: bool = False) -> str:
     """Base prompt plus a short note on what this intent has to produce."""
-    prompt = base_system_prompt()
+    prompt = base_system_prompt(with_exemplars)
     if intent is None:
         return prompt
     if guidance := INTENT_GUIDANCE.get(intent):
