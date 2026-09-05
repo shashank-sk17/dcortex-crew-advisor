@@ -1,0 +1,13 @@
+<div class="card">
+  <div class="card__title">Policy weights</div>
+  <p class="muted">The AI advises; you keep the wheel. Re-ranks live — no LLM call.</p>
+  @for (k of knobs; track k.key) {
+    <label class="knob">
+      <span class="knob__label">{{ k.label }}<em>{{ k.hint }}</em></span>
+      <input type="range" min="0" max="2" step="0.1"
+             [value]="weights[k.key]"
+             (input)="onInput(k.key, $any($event.target).value)" />
+      <span class="knob__val mono">{{ (weights[k.key]).toFixed(1) }}</span>
+    </label>
+  }
+</div>

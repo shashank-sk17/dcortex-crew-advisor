@@ -1,0 +1,15 @@
+.rail {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; height: 100%; overflow-y: auto;
+}
+.rail__title { font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-2); }
+
+.rr {
+  display: grid; grid-template-columns: 20px 1fr auto auto; gap: 8px;
+  align-items: baseline; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--line);
+}
+.rr:first-of-type { border-top: none; }
+.rr--top .rr__rank { color: var(--pass); font-weight: 700; }
+.rr__action { color: var(--fg-1); }
+.rr__cost { color: var(--fg-0); }
+.rr__score { color: var(--fg-3); }

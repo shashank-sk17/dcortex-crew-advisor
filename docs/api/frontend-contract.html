@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Crew Operations Advisor — REST API (Frontend-required)</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font: 10.5pt/1.5 "Segoe UI", Arial, sans-serif; color: #1a1a1a; margin: 0;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  h1 { font-size: 21pt; color: #1F3864; margin: 0 0 2pt; line-height: 1.15; }
+  h1 + .sub { color: #555; font-size: 10.5pt; margin: 0 0 14pt; }
+  h2 { font-size: 14pt; color: #1F3864; margin: 22pt 0 8pt; page-break-after: avoid; }
+  h3 { font-size: 10.5pt; color: #1F3864; margin: 12pt 0 4pt; page-break-after: avoid; }
+  p { margin: 4pt 0; }
+  code, pre { font-family: "Consolas", "SFMono-Regular", monospace; }
+  pre {
+    background: #f4f5f7; border: 1px solid #e2e4e8; border-radius: 3px;
+    padding: 8pt 10pt; font-size: 8.6pt; line-height: 1.42; white-space: pre-wrap;
+    word-break: break-word; margin: 5pt 0; page-break-inside: avoid;
+  }
+  .meta-row {
+    display: grid; grid-template-columns: 78px 60px 78px 1fr;
+    background: #eef1f6; border: 1px solid #dfe3ea; font-size: 9pt;
+    margin: 4pt 0 8pt; page-break-inside: avoid;
+  }
+  .meta-row span { padding: 5pt 8pt; border-right: 1px solid #dfe3ea; }
+  .meta-row span:last-child { border-right: 0; }
+  .meta-row .k { font-weight: 700; color: #333; }
+  .meta-row .v { font-family: Consolas, monospace; }
+  .tag { display: inline-block; font-size: 7.6pt; font-weight: 700; letter-spacing: .04em;
+    padding: 1pt 5pt; border-radius: 2px; vertical-align: 1pt; }
+  .tag.new { background: #e7f4ea; color: #1f7a34; border: 1px solid #bfe1c6; }
+  .tag.reshape { background: #fdf1e3; color: #9a5b12; border: 1px solid #f0d5b0; }
+  .tag.asv2 { background: #eef1f6; color: #3a4a63; border: 1px solid #d3dae6; }
+  table.summary { border-collapse: collapse; width: 100%; font-size: 8.8pt; margin-top: 6pt; }
+  table.summary th, table.summary td { border: 1px solid #dfe3ea; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  table.summary th { background: #eef1f6; color: #1F3864; }
+  table.summary td.m { font-family: Consolas, monospace; white-space: nowrap; }
+  ul { margin: 4pt 0; padding-left: 18pt; }
+  li { margin: 2pt 0; }
+  .foot { color: #888; font-size: 8pt; border-top: 1px solid #e2e4e8; margin-top: 22pt; padding-top: 6pt; }
+  .lead { background: #f7f9fc; border-left: 3px solid #1F3864; padding: 6pt 10pt; margin: 8pt 0; font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<h1>Crew Operations Advisor — REST API</h1>
+<p class="sub"><b>Frontend-required contract</b> — the endpoints the Ops Console actually calls, including the advisor stream. An extension of Gayathri's <i>REST API v2</i>; tags mark the delta.</p>
+
+<p><b>Base URL:</b> <code>/api/v1</code> &nbsp;·&nbsp; <b>Content-Type:</b> <code>application/json</code> &nbsp;·&nbsp; <b>Timestamps:</b> UTC ISO-8601 &nbsp;·&nbsp; <b>Money:</b> integer INR &nbsp;·&nbsp; <b>Hours:</b> float 2dp</p>
+
+<p><span class="tag new">NEW</span> not in v2 &nbsp; <span class="tag reshape">RESHAPE</span> in v2 but the body must change &nbsp; <span class="tag asv2">AS v2</span> take v2's shape unchanged</p>
+
+<h3>Response envelope</h3>
+<p>Adopt v2's envelope. Reads return <code>{ "data": … }</code>; collections add <code>"meta": { "count": N }</code>. The frontend unwraps <code>data</code> in one HTTP interceptor — no per-call change. Every <i>derived</i> response also carries <code>"basis": ["flights.json","rules.json", …]</code> (the files + rule IDs it was computed from) — cheap, and it is the "every number traces to a source" story that is scored.</p>
+
+<h3>Standard error contract</h3>
+<pre>{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request parameters",
+    "details": [ { "field": "pairing_id", "issue": "pairing_id is required" } ]
+  }
+}</pre>
+<p>HTTP status codes: <b>200</b> Success · <b>400</b> Bad Request · <b>404</b> Not Found · <b>500</b> Internal Server Error.</p>
+
+<div class="lead">Two decisions the frontend needs settled: (1) <b>are derived fields computed in <code>core/</code> for v1</b> — <code>delay_rank</code>, crew-row <code>attention</code>/headroom, the funnel? The board and crew list are designed around them. (2) <b>SSE <code>/ask</code> vs sync <code>/advisory</code></b> — the streaming reasoning trace is a scored demo beat.</div>
+
+<h2>Delta from v2 — what was there, what the frontend needs</h2>
+
+<h3>A. Endpoints v2 already has — the body must change</h3>
+<table class="summary">
+<tr><th>Endpoint</th><th>What v2 returns</th><th>What the frontend needs added</th><th>Why</th></tr>
+<tr><td class="m">GET /crew</td><td>flat profile: <code>crew_id, name, rank, base, ratings, seniority, reachability_minutes, status</code></td><td><code>+ on_duty, current_assignment, next_report_utc, duty_7d, duty_7d_headroom, disruption_risk_score, attention{flag,reasons}</code></td><td>the crew list shows these at a glance; without them every row is just a name</td></tr>
+<tr><td class="m">GET /crew/{id}/duty-clock</td><td><code>duty_hours_7d, flight_hours_28d, last_rest_ended</code></td><td><code>+ duty_7d_headroom, flight_28d_headroom, rest_ok</code></td><td>the drawer shows headroom, not raw totals</td></tr>
+<tr><td class="m">GET /crew/{id}/certifications</td><td><code>cert_type, valid_from, valid_to</code></td><td><code>+ days_to_expiry, expiring_soon</code> (≤ 3 d), evaluated on a date</td><td>the drawer flags "expires in 2 days"; a bare range makes the client recompute</td></tr>
+<tr><td class="m">GET /crew/{id}/legality</td><td><code>eligible: bool</code> + 4 booleans (<code>certification_valid, duty_limits_ok, rest_ok, roster_exceptions</code>)</td><td><code>verdicts[]</code> — all 7 rules, each <code>status</code> + <code>detail</code> + (numeric) <code>used / limit / headroom</code></td><td>the workspace legality-chart plots each rule as a bounded region; 4 booleans can't be drawn, and FDP-01/DUTY-02/FLT-03 are collapsed, QUAL-05/BASE-07 dropped</td></tr>
+<tr><td class="m">GET /pairings/{id}/candidates</td><td>flat list: <code>[{crew_id, name, rank, eligible, score, reasons[]}]</code></td><td><code>funnel[]</code> (150 → 6, drop reason per stage), <code>options[]</code> (cost-ranked: <code>action, cost_inr, delay_hours, rank, rules_checked, cost_breakdown</code>), <code>near_misses[]</code> (<code>unlock</code>), <code>excluded[].verdicts[]</code></td><td>renders the whole workspace — funnel-strip, options-ledger, "why not them"; the auditability story is in these fields</td></tr>
+<tr><td class="m">GET /pairings/{id}</td><td>leg = <code>{flight_id, leg_order}</code>; no <code>overnight_station</code>; no <code>crew</code></td><td>inline each leg's <code>dep_station/arr_station/dep_utc/arr_utc</code>; add <code>overnight_station</code>, <code>crew[]</code></td><td>the route-chart draws the leg geometry; <code>overnight_station</code> is the day-2 orphan signal; else the client N+1s to <code>/flights/{id}</code></td></tr>
+<tr><td class="m">GET /flights</td><td>schedule only: <code>flight_id … block_hours, aircraft, aircraft_type, seats</code></td><td><code>+ pairing_id, status, delay_rank, delay_rank_score, delay_rank_reasons, slack_minutes, downstream_count, crew_fdp_headroom_min</code></td><td>the board <i>is</i> "colour-coded by delay rank" — v2 explicitly excludes this ("do not promise delay rank / slack / FDP headroom unless implemented"). Needs a <code>core/</code> decision.</td></tr>
+<tr><td class="m">GET /flights/{id}</td><td>same schedule row</td><td><code>+ crew[], report_utc, release_utc, pax_estimate, prev_leg, next_leg, operating_crew_pressure[]</code></td><td>the board drawer + workspace header need the operating crew and duty bracket</td></tr>
+<tr><td class="m">GET /summary</td><td><code>crew:{total,active,on_leave}, flights:{total}, pairings:{total}, risk:{high_risk_crew}, exceptions:{open}</code></td><td><code>crew:{on_duty,off_duty,reserve,needs_attention}, flights:{total,on_time,at_risk,delayed,cancelled}, alerts:{critical,warning}, reserves:{by_base_role}, aircraft:{in_service,aog}, stations:{closures}</code></td><td>the sidebar tiles map to these exact buckets</td></tr>
+<tr><td class="m">GET /reserves</td><td><code>crew_id, base, dates[], oncall_start_utc, oncall_end_utc</code></td><td><code>+ name, role, window:{start,end}</code> (HH:MM), <code>reachability_minutes</code>, <code>covers</code> (given <code>?covers_report_utc=</code>)</td><td>the reserve tile shows role + a compact window + whether it covers a report time</td></tr>
+<tr><td class="m">GET /costs</td><td>placeholder keys (<code>deadhead, delay, cancellation, hotel</code>) all <code>0</code></td><td>the real <code>costs.json</code> keys: <code>reserve_callout_pilot, dayoff_callout_pilot, deadhead_positioning, delay_cost_per_duty_hour, cancellation_per_flight, hotel_overnight</code></td><td>cost breakdowns render from these — the v2 sample keys don't exist in the file</td></tr>
+<tr><td class="m">GET /rules</td><td><code>rule_id, text, params</code></td><td>optionally <code>+ gloss</code></td><td>fine as-is — frontend carries its own gloss map</td></tr>
+<tr><td class="m">GET /crew/{id}, /crew/{id}/risk, /risk-signals</td><td>as documented in v2</td><td>nothing — take unchanged</td><td>frontend joins <code>name</code> onto risk-signals from <code>/crew</code></td></tr>
+</table>
+
+<h3>B. Endpoints v2 is missing — the frontend needs them added</h3>
+<table class="summary">
+<tr><th>Endpoint</th><th>What the frontend needs</th><th>Why</th></tr>
+<tr><td class="m">GET /meta</td><td>snapshot, <code>week:{start,end}</code>, <code>dates[]</code>, counts</td><td>bootstraps the date picker before any date is chosen — you can't call <code>/summary</code> without a date, or know which dates are legal without this</td></tr>
+<tr><td class="m">GET /flights/{id}/downstream</td><td>ordered tail legs, <code>cumulative_delay_min</code>, <code>same_pairing</code></td><td>the workspace route-chart's blast radius; orphaned day-2 legs render hatched</td></tr>
+<tr><td class="m">GET /crew/{id}/assignments</td><td>this week's pairings/legs with report/release</td><td>the crew drawer's "this week" timeline; source list for the per-pairing legality check</td></tr>
+<tr><td class="m">GET /alerts + POST /alerts/{id}/ack · /resolve</td><td>the HITL queue (deterministic world scan) + lifecycle</td><td>the alert panel and the "needs you now" arrival triage; v2 has <code>/exceptions</code> and <code>summary.exceptions.open</code> but no list or lifecycle</td></tr>
+<tr><td class="m">POST /decisions + GET /decisions</td><td>record + list the controller's committed option</td><td>the "Record decision" button + shift-log rail — the brief's "no reasoning trail" pain point. In-memory is fine.</td></tr>
+<tr><td class="m">POST /ask (SSE)</td><td>the advisor stream — <code>status·tool_call·tool_result·rule_check·token·answer·abstain·done</code></td><td>v2 has only sync <code>POST /advisory</code>. The chat bubble renders the streaming reasoning trace ("watch the system think") — a scored demo beat. If the team keeps sync <code>/advisory</code>, its body must still carry the funnel + excluded + near_misses (section A row for candidates).</td></tr>
+<tr><td class="m">GET /scenarios + POST /scenarios/{id}/run</td><td>list S1–S6; run streams the same SSE events</td><td>the scenario feed — the demo's guided path</td></tr>
+<tr><td class="m">POST /rank</td><td>re-order <code>Option[]</code> by weighted score, no LLM, instant</td><td>the policy sliders debounce onto this</td></tr>
+<tr><td class="m">POST /crew/{id}/notification</td><td>a drafted callout message</td><td>Tier-3 bonus</td></tr>
+</table>
+
+<h3>C. v2 endpoints the frontend does not consume (v1)</h3>
+<table class="summary">
+<tr><th>Endpoint</th><th>Status</th></tr>
+<tr><td class="m">POST /advisory</td><td>superseded by <code>/ask</code> (streaming) + <code>/pairings/{id}/candidates</code> (deterministic). If kept, see the note above.</td></tr>
+<tr><td class="m">GET /crew/{id}/exceptions</td><td>folded into <code>/alerts</code> (<code>ROSTER_EXCEPTION</code>) and the crew-row <code>attention</code> flag. Harmless to keep.</td></tr>
+<tr><td class="m">GET /crew/{id}/notes</td><td>not wired in v1; a candidate feed for a future crew-notes panel or the decision log.</td></tr>
+<tr><td class="m">GET /pairings (list)</td><td>the console navigates to pairings from a flight, never lists them. Harmless to keep.</td></tr>
+<tr><td class="m">GET /aircraft, GET /stations</td><td>not in v2 and not required — the frontend derives tails and station codes from <code>/flights</code> for v1.</td></tr>
+</table>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Pages 1–3</div>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2>1. App Meta <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/meta</span></div>
+<h3>Request</h3><pre>GET /api/v1/meta</pre>
+<h3>Request Parameters</h3><p>None.</p>
+<h3>Purpose</h3><p>Snapshot instant, operating-week bounds, the list of valid dates, and row counts. The whole console is date-driven; the topbar date picker and <code>AppState</code> read this once at boot.</p>
+<h3>200 — Success</h3><pre>{
+  "data": {
+    "snapshot_utc": "2026-09-14T18:00:00Z",
+    "week": { "start": "2026-09-14", "end": "2026-09-20" },
+    "dates": ["2026-09-14","2026-09-15","2026-09-16","2026-09-17","2026-09-18","2026-09-19","2026-09-20"],
+    "hub": "BLR", "currency": "INR",
+    "counts": { "crew": 150, "flights": 147, "pairings": 39, "reserves": 16 }
+  }
+}</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to load meta" } }</pre>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2>2. Operational Rules <span class="tag asv2">AS v2</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/rules</span></div>
+<h3>Request</h3><pre>GET /api/v1/rules</pre>
+<h3>Request Parameters</h3><p>Optional query: <code>rule_id</code>.</p>
+<h3>Purpose</h3><p>The 7 rule definitions for the legend rail and rule popovers. <code>gloss</code> (plain-English) is optional — the frontend carries its own if absent.</p>
+<h3>200 — Success</h3><pre>{
+  "data": [
+    { "rule_id": "RULE-DUTY-02",
+      "text": "Max 60 duty hours in any 7 consecutive calendar days (inclusive of duty date).",
+      "params": { "max_duty_hours": 60, "window_days": 7 },
+      "gloss": "No more than 60 duty h across any 7 UTC calendar days." }
+  ],
+  "meta": { "count": 7 }
+}</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve rules" } }</pre>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2>3. Cost Configuration <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/costs</span></div>
+<h3>Request</h3><pre>GET /api/v1/costs</pre>
+<h3>Request Parameters</h3><p>None.</p>
+<h3>Purpose</h3><p>The rate card. Return the <b>real <code>costs.json</code> keys</b> — the v2 sample keys (<code>deadhead</code>, <code>delay</code>, …) do not exist in the file.</p>
+<h3>200 — Success</h3><pre>{
+  "data": {
+    "currency": "INR",
+    "reserve_callout_pilot": 18500, "reserve_callout_cabin": 9500,
+    "dayoff_callout_pilot": 24000, "dayoff_callout_cabin": 12500,
+    "deadhead_positioning": 6500, "delay_cost_per_duty_hour": 5400,
+    "cancellation_per_flight": 250000, "hotel_overnight": 4200
+  }
+}</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve costs" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 2</div>
+
+<!-- ───────────────────────────── 4 ───────────────────────────── -->
+<h2>4. Flight List <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/flights</span></div>
+<h3>Request</h3><pre>GET /api/v1/flights?date=2026-09-15&amp;station=BLR&amp;delay_rank=critical</pre>
+<h3>Request Parameters</h3><p><b>Required:</b> <code>date</code> (in the operating week). <b>Optional:</b> <code>station</code>, <code>aircraft</code>, <code>status</code>, <code>delay_rank</code>, <code>sort</code>.</p>
+<h3>Purpose</h3><p>The main board. Each row carries the <b>derived</b> disruption signals — the board is "colour-coded by delay rank". Sorted server-side by <code>delay_rank_score</code>.</p>
+<h3>200 — Success</h3><pre>{
+  "data": [
+    { "flight_id": "DX412-2026-09-15", "flight_no": "DX412", "date": "2026-09-15",
+      "dep_station": "BLR", "arr_station": "DEL",
+      "dep_utc": "2026-09-15T06:00:00Z", "arr_utc": "2026-09-15T08:45:00Z",
+      "block_hours": 2.75, "aircraft": "VT-DXC", "aircraft_type": "A320", "seats": 162,
+      "pairing_id": "P-2291",
+      "status": "at_risk",
+      "delay_rank": "critical", "delay_rank_score": 83,
+      "delay_rank_reasons": ["pairing overnights away from base (day-2 orphan risk)"],
+      "slack_minutes": 20, "downstream_count": 4, "crew_fdp_headroom_min": 45,
+      "basis": ["flights.json","rosters.json","rules.json"] }
+  ],
+  "meta": { "count": 1 }
+}</pre>
+<p><b>delay_rank formula</b> (see the frontend mock <code>derive.ts</code> for the reference implementation): <code>slack_minutes</code> = next-tail-departure − this-arrival; <code>crew_fdp_headroom_min</code> = FDP limit − projected duty for the operating pairing that day.</p>
+<pre>critical : slack &lt; 30  OR  headroom &lt; 30  OR  pairing overnights away from base  OR  downstream_count &ge; 4
+high     : slack &lt; 60  OR  headroom &lt; 60  OR  downstream_count &ge; 2
+medium   : slack &lt; 120 OR  downstream_count == 1
+low      : otherwise</pre>
+<h3>400 — Bad Request</h3><pre>{ "error": { "code": "INVALID_DATE", "message": "'date' is required and must be within 2026-09-14 … 2026-09-20." } }</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve flights" } }</pre>
+
+<!-- ───────────────────────────── 5 ───────────────────────────── -->
+<h2>5. Flight Details <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/flights/{flight_id}</span></div>
+<h3>Request</h3><pre>GET /api/v1/flights/DX412-2026-09-15</pre>
+<h3>Request Parameters</h3><p>Path: <code>flight_id</code>.</p>
+<h3>Purpose</h3><p>One flight, plus the operating crew, the duty bracket, and per-crew rule pressure. Feeds the board drawer and the resolution workspace header.</p>
+<h3>200 — Success</h3><pre>{
+  "data": {
+    "flight_id": "DX412-2026-09-15", "flight_no": "DX412", "date": "2026-09-15",
+    "dep_station": "BLR", "arr_station": "DEL",
+    "dep_utc": "2026-09-15T06:00:00Z", "arr_utc": "2026-09-15T08:45:00Z",
+    "block_hours": 2.75, "aircraft": "VT-DXC", "aircraft_type": "A320", "seats": 162,
+    "pairing_id": "P-2291",
+    "delay_rank": "critical", "delay_rank_score": 83,
+    "delay_rank_reasons": ["pairing overnights away from base (day-2 orphan risk)"],
+    "slack_minutes": 20, "downstream_count": 4, "crew_fdp_headroom_min": 45,
+    "crew": [
+      { "crew_id": "C-1042", "name": "A. Nair", "role": "Captain", "rank": "Captain" },
+      { "crew_id": "C-1694", "name": "…", "role": "First Officer", "rank": "First Officer" }
+    ],
+    "report_utc": "2026-09-15T05:00:00Z", "release_utc": "2026-09-15T15:30:00Z",
+    "pax_estimate": 162, "prev_leg": null, "next_leg": "DX413-2026-09-15",
+    "operating_crew_pressure": [
+      { "crew_id": "C-1042", "rule_id": "RULE-DUTY-02", "headroom": 39.07, "status": "PASS" }
+    ],
+    "basis": ["flights.json","rosters.json","duty_clocks.json","rules.json"]
+  }
+}</pre>
+<h3>404 — Not Found</h3><pre>{ "error": { "code": "FLIGHT_NOT_FOUND", "message": "Flight not found" } }</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve flight" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 3</div>
+
+<!-- ───────────────────────────── 6 ───────────────────────────── -->
+<h2>6. Flight Downstream (blast radius) <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/flights/{flight_id}/downstream</span></div>
+<h3>Request</h3><pre>GET /api/v1/flights/DX412-2026-09-15/downstream?delay_min=90</pre>
+<h3>Request Parameters</h3><p>Path: <code>flight_id</code>. Optional: <code>delay_min</code> (shock to propagate, default 90).</p>
+<h3>Purpose</h3><p>The ordered tail legs after this flight — same aircraft <b>and</b> same pairing — with cumulative delay propagated and a <code>same_pairing</code> flag. Drives the workspace route-chart's cascade (orphaned day-2 legs render hatched) and the board drawer's mini-cascade.</p>
+<h3>200 — Success</h3><pre>{
+  "data": [
+    { "flight_id": "DX413-2026-09-15", "flight_no": "DX413",
+      "dep_utc": "2026-09-15T09:40:00Z", "arr_utc": "2026-09-15T12:10:00Z",
+      "dep_station": "DEL", "arr_station": "BLR",
+      "cumulative_delay_min": 90, "same_pairing": true },
+    { "flight_id": "DX589-2026-09-16", "flight_no": "DX589",
+      "dep_utc": "2026-09-16T04:00:00Z", "arr_utc": "2026-09-16T06:45:00Z",
+      "dep_station": "DEL", "arr_station": "BLR",
+      "cumulative_delay_min": 0, "same_pairing": true }
+  ],
+  "meta": { "count": 2 }
+}</pre>
+<h3>404 — Not Found</h3><pre>{ "error": { "code": "FLIGHT_NOT_FOUND", "message": "Flight not found" } }</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to compute downstream" } }</pre>
+
+<!-- ───────────────────────────── 7 ───────────────────────────── -->
+<h2>7. Pairing Details <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/pairings/{pairing_id}</span></div>
+<h3>Request</h3><pre>GET /api/v1/pairings/P-2291</pre>
+<h3>Request Parameters</h3><p>Path: <code>pairing_id</code>.</p>
+<h3>Purpose</h3><p>The multi-day pairing. Add <b><code>overnight_station</code></b> (non-null ⇒ day-2 orphan risk) and <b>inline each leg's dep/arr station and time</b> so the route-chart does not N+1 to <code>/flights/{id}</code>. Include the <code>crew</code> complement.</p>
+<h3>200 — Success</h3><pre>{
+  "data": {
+    "pairing_id": "P-2291", "aircraft": "VT-DXC", "overnight_station": "DEL",
+    "days": [
+      { "date": "2026-09-15", "report_utc": "2026-09-15T05:00:00Z", "release_utc": "2026-09-15T15:30:00Z",
+        "flights": [
+          { "flight_id": "DX412-2026-09-15", "flight_no": "DX412", "leg_order": 1,
+            "dep_station": "BLR", "arr_station": "DEL",
+            "dep_utc": "2026-09-15T06:00:00Z", "arr_utc": "2026-09-15T08:45:00Z" }
+        ] }
+    ],
+    "crew": [ { "crew_id": "C-1042", "role": "Captain" }, { "crew_id": "C-1694", "role": "First Officer" } ]
+  }
+}</pre>
+<h3>404 — Not Found</h3><pre>{ "error": { "code": "PAIRING_NOT_FOUND", "message": "Pairing not found" } }</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve pairing" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 4</div>
+
+<!-- ───────────────────────────── 8 ───────────────────────────── -->
+<h2>8. Pairing Replacement Candidates <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/pairings/{pairing_id}/candidates</span></div>
+<h3>Request</h3><pre>GET /api/v1/pairings/P-2291/candidates?role=Captain&amp;callout_utc=2026-09-15T05:00:00Z</pre>
+<h3>Request Parameters</h3><p>Path: <code>pairing_id</code>. <b>Required:</b> <code>role</code>, <code>callout_utc</code>. Optional: <code>delay_h</code>.</p>
+<h3>Purpose</h3><p><b>Deterministic — no LLM.</b> The whole "who can cover this" object: the shrinking <code>funnel</code> with a reason per drop, cost-ranked legal <code>options</code>, <code>near_misses</code> (one lever from legal), and <code>excluded</code> candidates each carrying their failing rule verdicts. This renders the workspace funnel-strip, options-ledger and "why not them". The agent calls this same endpoint as a tool.</p>
+<h3>200 — Success</h3><pre>{
+  "data": {
+    "pairing_id": "P-2291", "role": "Captain", "callout_utc": "2026-09-15T05:00:00Z",
+    "funnel": [
+      { "stage": "all_crew",   "count": 150 },
+      { "stage": "role",       "count": 32, "dropped": 118, "reason": "not Captain" },
+      { "stage": "qualified",  "count": 21, "dropped": 11,  "reason": "RULE-QUAL-05 / status" },
+      { "stage": "available",  "count": 12, "dropped": 9,   "reason": "duty conflict" },
+      { "stage": "legal",      "count": 6,  "dropped": 6,   "reason": "rule breach — trace attached" }
+    ],
+    "options": [
+      { "action": "Assign Captain C-3310 (reserve callout)", "crew_id": "C-3310", "legal": true,
+        "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"],
+        "cost_inr": 18500, "delay_hours": 0.0, "rank": 1,
+        "cost_breakdown": { "callout": 18500, "positioning": 0, "delay": 0 },
+        "coverage": "full pairing", "reachability_minutes": 45 }
+    ],
+    "near_misses": [
+      { "action": "Assign Captain C-2210 (reserve callout + deadhead from DEL)", "crew_id": "C-2210", "legal": true,
+        "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"],
+        "cost_inr": 41200, "delay_hours": 3.0, "rank": 5,
+        "cost_breakdown": { "callout": 18500, "positioning": 6500, "delay": 16200 },
+        "unlock": "legal via DX402 deadhead DEL&rarr;BLR — DX412 departs ~3h late" }
+    ],
+    "excluded": [
+      { "crew_id": "C-2087", "verdicts": [
+        { "rule_id": "RULE-DUTY-02", "status": "FAIL",
+          "detail": "would exceed 60h/7d by 1h20m on 2026-09-15 (total 61.33h)",
+          "used": 61.33, "limit": 60.0, "headroom": -1.33, "date": "2026-09-15" } ] }
+    ],
+    "basis": ["reserve_pool.json","crew.json","costs.json","rules.json"]
+  }
+}</pre>
+<h3>400 — Bad Request</h3><pre>{ "error": { "code": "MISSING_PARAMETER", "message": "role and callout_utc are required" } }</pre>
+<h3>404 — Not Found</h3><pre>{ "error": { "code": "PAIRING_NOT_FOUND", "message": "Pairing not found" } }</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to generate candidates" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 5</div>
+
+<!-- ───────────────────────────── 9 ───────────────────────────── -->
+<h2>9. Crew List <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/crew</span></div>
+<h3>Request</h3><pre>GET /api/v1/crew?date=2026-09-15&amp;filter=needs_attention&amp;role=Captain</pre>
+<h3>Request Parameters</h3><p>Optional: <code>date</code>, <code>filter</code> (<code>needs_attention | on_duty | off_duty | on_reserve | all</code>), <code>role</code>, <code>base</code>, <code>status</code>, <code>q</code> (id/name search).</p>
+<h3>Purpose</h3><p>The crew-view list. The row must carry the <b>derived</b> at-a-glance signals — <code>on_duty</code>, duty headroom, risk, and the <code>attention</code> flag with reasons — not just the flat profile.</p>
+<h3>200 — Success</h3><pre>{
+  "data": [
+    { "crew_id": "C-2087", "name": "…", "rank": "Captain", "base": "BLR",
+      "ratings": ["A320"], "status": "active", "on_duty": false,
+      "current_assignment": { "pairing_id": null, "flight_id": null },
+      "next_report_utc": "2026-09-16T04:00:00Z",
+      "duty_7d": 58.60, "duty_7d_headroom": 1.40,
+      "disruption_risk_score": 0.31,
+      "attention": { "flag": true, "reasons": ["RULE-DUTY-02 headroom 1.4h &lt; 3h"] },
+      "basis": ["duty_clocks.json","certifications.json","risk_signals.json"] }
+  ],
+  "meta": { "count": 1 }
+}</pre>
+<h3>400 — Bad Request</h3><pre>{ "error": { "code": "INVALID_FILTER", "message": "Invalid crew filter" } }</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve crew" } }</pre>
+
+<!-- ───────────────────────────── 10 ───────────────────────────── -->
+<h2>10. Crew Details <span class="tag asv2">AS v2</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/crew/{crew_id}</span></div>
+<h3>Request</h3><pre>GET /api/v1/crew/C-1042</pre>
+<h3>Purpose</h3><p>Flat profile — v2's shape is fine. The drawer composes the full picture from endpoints 11–15 in parallel (<code>forkJoin</code> on the client).</p>
+<h3>200 — Success</h3><pre>{ "data": { "crew_id": "C-1042", "name": "A. Nair", "rank": "Captain", "base": "BLR",
+  "ratings": ["A320"], "seniority": 14, "reachability_minutes": 90, "status": "active" } }</pre>
+<h3>404 / 500</h3><pre>{ "error": { "code": "CREW_NOT_FOUND", "message": "Crew member not found" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve crew details" } }</pre>
+
+<!-- ───────────────────────────── 11 ───────────────────────────── -->
+<h2>11. Duty Clock <span class="tag asv2">AS v2</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/crew/{crew_id}/duty-clock</span></div>
+<h3>Request</h3><pre>GET /api/v1/crew/C-1042/duty-clock?date=2026-09-15</pre>
+<h3>Purpose</h3><p>Calendar-day window sums + headroom + rest state. Add <code>duty_7d_headroom</code> / <code>flight_28d_headroom</code> / <code>rest_ok</code> for the drawer widgets.</p>
+<h3>200 — Success</h3><pre>{
+  "data": {
+    "crew_id": "C-1042", "date": "2026-09-15", "as_of_utc": "2026-09-14T18:00:00Z",
+    "duty_hours_7d": 20.93, "duty_7d_headroom": 39.07,
+    "flight_hours_28d": 64.27, "flight_28d_headroom": 35.73,
+    "last_rest_ended": "2026-09-13T02:00:00Z", "rest_ok": true
+  }
+}</pre>
+<h3>404 / 500</h3><pre>{ "error": { "code": "DUTY_CLOCK_NOT_FOUND", "message": "Duty clock not found" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve duty clock" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 6</div>
+
+<!-- ───────────────────────────── 12 ───────────────────────────── -->
+<h2>12. Certifications <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/crew/{crew_id}/certifications</span></div>
+<h3>Request</h3><pre>GET /api/v1/crew/C-5417/certifications?on=2026-09-19</pre>
+<h3>Request Parameters</h3><p>Path: <code>crew_id</code>. Optional: <code>on</code> (date to evaluate against, default snapshot).</p>
+<h3>Purpose</h3><p>Cert records with <b><code>days_to_expiry</code></b> and <b><code>expiring_soon</code></b> (≤ 3 days) computed for the crew drawer — a bare validity range makes the frontend recompute.</p>
+<h3>200 — Success</h3><pre>{
+  "data": [
+    { "crew_id": "C-5417", "cert_type": "recurrent_training",
+      "valid_from": "2025-09-17", "valid_to": "2026-09-17",
+      "days_to_expiry": -2, "expiring_soon": false }
+  ],
+  "meta": { "count": 1 }
+}</pre>
+<h3>404 / 500</h3><pre>{ "error": { "code": "CREW_NOT_FOUND", "message": "Crew member not found" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve certifications" } }</pre>
+
+<!-- ───────────────────────────── 13 ───────────────────────────── -->
+<h2>13. Crew Risk <span class="tag asv2">AS v2</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/crew/{crew_id}/risk</span></div>
+<h3>Request</h3><pre>GET /api/v1/crew/C-1042/risk</pre>
+<h3>Purpose</h3><p>The latest disruption-risk signal — a <b>provided input</b>, shown as-is.</p>
+<h3>200 — Success</h3><pre>{ "data": { "crew_id": "C-1042", "as_of_utc": "2026-09-14T18:00:00Z",
+  "disruption_risk_score": 0.78,
+  "drivers": ["short-rest pattern over last 14 days","two fatigue reports this month"] } }</pre>
+<h3>404 / 500</h3><pre>{ "error": { "code": "RISK_NOT_FOUND", "message": "No risk signal found" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve crew risk" } }</pre>
+
+<!-- ───────────────────────────── 14 ───────────────────────────── -->
+<h2>14. Crew Assignments <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/crew/{crew_id}/assignments</span></div>
+<h3>Request</h3><pre>GET /api/v1/crew/C-1042/assignments?from=2026-09-14&amp;to=2026-09-20</pre>
+<h3>Request Parameters</h3><p>Path: <code>crew_id</code>. Optional: <code>from</code>, <code>to</code>.</p>
+<h3>Purpose</h3><p>This week's pairings and legs with report/release — the crew drawer's "this week" timeline, and the source list for a per-pairing legality check.</p>
+<h3>200 — Success</h3><pre>{
+  "data": [
+    { "pairing_id": "P-2291", "date": "2026-09-15", "role": "Captain",
+      "flights": ["DX412-2026-09-15","DX413-2026-09-15","DX588-2026-09-15"],
+      "report_utc": "2026-09-15T05:00:00Z", "release_utc": "2026-09-15T15:30:00Z" }
+  ],
+  "meta": { "count": 1 }
+}</pre>
+<h3>404 / 500</h3><pre>{ "error": { "code": "CREW_NOT_FOUND", "message": "Crew member not found" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve assignments" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 7</div>
+
+<!-- ───────────────────────────── 15 ───────────────────────────── -->
+<h2>15. Crew Legality Check <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/crew/{crew_id}/legality</span></div>
+<h3>Request</h3><pre>GET /api/v1/crew/C-2087/legality?pairing_id=P-2291&amp;delay_h=0</pre>
+<h3>Request Parameters</h3><p>Path: <code>crew_id</code>. <b>Required:</b> <code>pairing_id</code>. Optional: <code>delay_h</code>.</p>
+<h3>Purpose</h3><p>Return <b>all seven rule verdicts</b>, not a 4-boolean summary. The workspace legality-chart plots each rule as a bounded region — it needs <code>status</code> per rule and, where numeric, <code>used</code> / <code>limit</code> / <code>headroom</code>. v2's <code>checks{}</code> collapses FDP-01/DUTY-02/FLT-03 and drops QUAL-05/BASE-07.</p>
+<h3>200 — Success</h3><pre>{
+  "data": {
+    "crew_id": "C-2087", "pairing_id": "P-2291", "date": "2026-09-15",
+    "eligible": false,
+    "verdicts": [
+      { "rule_id": "RULE-FDP-01",  "status": "PASS", "detail": "9.50h duty vs 12.5h limit (3 sectors)",
+        "used": 9.50, "limit": 12.5, "headroom": 3.00, "date": "2026-09-15" },
+      { "rule_id": "RULE-DUTY-02", "status": "FAIL",
+        "detail": "would exceed 60h/7d by 1h20m on 2026-09-15 (total 61.33h)",
+        "used": 61.33, "limit": 60.0, "headroom": -1.33, "date": "2026-09-15" },
+      { "rule_id": "RULE-FLT-03",  "status": "PASS", "detail": "~66.3h / 100h in the 28 days to 2026-09-15",
+        "used": 66.3, "limit": 100.0, "headroom": 33.7, "date": "2026-09-15" },
+      { "rule_id": "RULE-REST-04", "status": "PASS", "detail": "14.2h rest before report (min 12h)",
+        "used": 14.2, "limit": 12.0, "headroom": 2.2 },
+      { "rule_id": "RULE-QUAL-05", "status": "PASS", "detail": "A320 rating valid" },
+      { "rule_id": "RULE-CERT-06", "status": "PASS", "detail": "all certifications valid on every duty date" },
+      { "rule_id": "RULE-BASE-07", "status": "PASS", "detail": "BLR own-base callout" }
+    ],
+    "basis": ["duty_clocks.json","certifications.json","crew.json","rules.json"]
+  }
+}</pre>
+<h3>400 / 404 / 500</h3><pre>{ "error": { "code": "MISSING_PARAMETER", "message": "pairing_id is required" } }
+{ "error": { "code": "PAIRING_NOT_FOUND", "message": "Pairing not found" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to evaluate legality" } }</pre>
+
+<!-- ───────────────────────────── 16 ───────────────────────────── -->
+<h2>16. Reserve Pool <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/reserves</span></div>
+<h3>Request</h3><pre>GET /api/v1/reserves?date=2026-09-15&amp;base=BLR&amp;role=Captain&amp;covers_report_utc=2026-09-15T06:00:00Z</pre>
+<h3>Request Parameters</h3><p>Optional: <code>date</code>, <code>base</code>, <code>role</code>, <code>covers_report_utc</code>.</p>
+<h3>Purpose</h3><p>Reserve pool with <code>role</code>, <code>name</code>, an HH:MM <code>window</code>, <code>reachability_minutes</code>, and — when <code>covers_report_utc</code> is given — <code>covers: bool</code> (does the window contain that report time).</p>
+<h3>200 — Success</h3><pre>{
+  "data": [
+    { "crew_id": "C-3310", "name": "…", "base": "BLR", "role": "Captain",
+      "window": { "start": "06:00", "end": "18:00" },
+      "covers": true, "reachability_minutes": 45 }
+  ],
+  "meta": { "count": 1 }
+}</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve reserve pool" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 8</div>
+
+<!-- ───────────────────────────── 17 ───────────────────────────── -->
+<h2>17. Alerts (HITL queue) <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/alerts</span></div>
+<h3>Request</h3><pre>GET /api/v1/alerts?date=2026-09-15&amp;status=open</pre>
+<h3>Request Parameters</h3><p>Optional: <code>date</code>, <code>status</code> (<code>open | ack | resolved</code>), <code>severity</code>, <code>type</code>.</p>
+<h3>Purpose</h3><p>The day's human-in-the-loop items, newest first — a deterministic scan of the world. Powers the alert panel and the "needs you now" arrival triage. Types: <code>DUTY_LIMIT_NEAR · CERT_EXPIRING · FLIGHT_AT_RISK · RESERVE_POOL_LOW · ROSTER_EXCEPTION · DISRUPTION_REPORTED</code>. Thresholds: cert ≤ 3 days · duty headroom &lt; 3h · a base+role reserve pool ≤ 1 · roster exceptions straight from <code>rosters.json.flagged_exceptions</code>.</p>
+<h3>200 — Success</h3><pre>{
+  "data": [
+    { "id": "AL-014", "type": "DUTY_LIMIT_NEAR", "severity": "warning",
+      "subject": { "kind": "crew", "id": "C-2087" },
+      "title": "C-2087 within 1h20m of the 60h/7d limit",
+      "detail": "Accrued 58.6h in the last 7 days.",
+      "created_utc": "2026-09-14T18:00:00Z", "status": "open",
+      "suggested_action": { "label": "Ask the advisor",
+        "ask_prompt": "C-2087 is near the duty limit — what are my options?",
+        "deep_link": "/crew/C-2087" } }
+  ],
+  "meta": { "count": 1 }
+}</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve alerts" } }</pre>
+
+<h2>18. Acknowledge / Resolve Alert <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">POST</span><span class="k">Endpoint</span><span class="v">/api/v1/alerts/{alert_id}/ack</span></div>
+<div class="meta-row"><span class="k">Method</span><span class="v">POST</span><span class="k">Endpoint</span><span class="v">/api/v1/alerts/{alert_id}/resolve</span></div>
+<h3>Request</h3><pre>POST /api/v1/alerts/AL-014/ack        { }
+POST /api/v1/alerts/AL-014/resolve    { "note": "called 05:12, confirmed" }</pre>
+<h3>Purpose</h3><p><code>ack</code> = seen (<code>open &rarr; ack</code>, card dims, stays). <code>resolve</code> = handled (<code>&rarr; resolved</code>, leaves the queue). In-memory is fine.</p>
+<h3>200 — Success</h3><pre>{ "data": { "id": "AL-014", "status": "resolved" } }</pre>
+<h3>404 / 500</h3><pre>{ "error": { "code": "ALERT_NOT_FOUND", "message": "Alert not found" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to update alert" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 9</div>
+
+<!-- ───────────────────────────── 19 ───────────────────────────── -->
+<h2>19. Dashboard Summary <span class="tag reshape">RESHAPE</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/summary</span></div>
+<h3>Request</h3><pre>GET /api/v1/summary?date=2026-09-15</pre>
+<h3>Request Parameters</h3><p><b>Required:</b> <code>date</code>.</p>
+<h3>Purpose</h3><p>The whole sidebar in one call. The breakdown must match the tiles: crew by duty state, the flight <b>risk mix</b>, alert counts, reserve pool by base·role.</p>
+<h3>200 — Success</h3><pre>{
+  "data": {
+    "date": "2026-09-15",
+    "crew": { "on_duty": 88, "off_duty": 46, "reserve": 16, "needs_attention": 7 },
+    "flights": { "total": 24, "on_time": 15, "at_risk": 3, "delayed": 6, "cancelled": 0 },
+    "alerts": { "critical": 2, "warning": 5 },
+    "reserves": { "by_base_role": { "BLR|Captain": 3, "DEL|Captain": 1 }, "depleted": [] },
+    "aircraft": { "in_service": 6, "aog": 0 },
+    "stations": { "closures": [] }
+  }
+}</pre>
+<h3>400 / 500</h3><pre>{ "error": { "code": "INVALID_DATE", "message": "'date' is required" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to generate summary" } }</pre>
+
+<!-- ───────────────────────────── 20 ───────────────────────────── -->
+<h2>20. Risk Signals <span class="tag asv2">AS v2</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/risk-signals</span></div>
+<h3>Request</h3><pre>GET /api/v1/risk-signals?threshold=0.5</pre>
+<h3>Purpose</h3><p>The pre-computed risk list, sorted high&rarr;low, optionally filtered to <code>score &ge; threshold</code>. Frontend joins <code>name</code> from <code>/crew</code>.</p>
+<h3>200 — Success</h3><pre>{ "data": [ { "crew_id": "C-1042", "as_of_utc": "2026-09-14T18:00:00Z",
+  "disruption_risk_score": 0.78, "drivers": ["short-rest pattern over last 14 days"] } ],
+  "meta": { "count": 1 } }</pre>
+<h3>500 — Internal Server Error</h3><pre>{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to retrieve risk signals" } }</pre>
+
+<!-- ───────────────────────────── 21 ───────────────────────────── -->
+<h2>21. Decisions — record / list <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">POST</span><span class="k">Endpoint</span><span class="v">/api/v1/decisions</span></div>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/decisions</span></div>
+<h3>Request</h3><pre>POST /api/v1/decisions
+{
+  "disruption_ref": "DX412-2026-09-15",
+  "chosen_option": { "action": "Assign Captain C-3310 (reserve callout)", "crew_id": "C-3310",
+                     "legal": true, "cost_inr": 18500, "delay_hours": 0.0, "rank": 1,
+                     "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"] },
+  "weights": {}, "accepted": true, "note": "called 05:12, confirmed"
+}
+
+GET /api/v1/decisions?date=2026-09-15</pre>
+<h3>Purpose</h3><p>Record the controller's <b>committed</b> option — the audit trail the redesign's "Record decision" and the shift-log rail need, and the brief's "no reasoning trail" pain point. It is a <b>log entry, not a roster mutation</b>. In-memory is fine for v1. <code>GET</code> returns newest first.</p>
+<h3>200 — Success</h3><pre>{ "data": { "id": "DEC-1", "disruption_ref": "DX412-2026-09-15",
+  "chosen_option": { "...": "full Option echoed back" },
+  "weights": {}, "accepted": true, "note": "called 05:12, confirmed",
+  "created_utc": "2026-09-15T05:14:00Z" } }</pre>
+<h3>400 / 500</h3><pre>{ "error": { "code": "VALIDATION_ERROR", "message": "chosen_option and disruption_ref are required" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to record decision" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 10</div>
+
+<!-- ───────────────────────────── 22 ───────────────────────────── -->
+<h2>22. Advisor — Ask (SSE) <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">POST</span><span class="k">Endpoint</span><span class="v">/api/v1/ask</span></div>
+<h3>Request</h3><pre>POST /api/v1/ask
+Accept: text/event-stream
+{
+  "query": "Captain C-1042 called in sick for P-2291. Who do I use?",
+  "as_of": "2026-09-15T05:00:00Z",
+  "weights": { "cost": 1.0, "delay": 1.0, "pool": 0.5, "pairing": 0.8, "fairness": 0.3 },
+  "stream": true
+}</pre>
+<h3>Request Parameters</h3><p>Body: <code>query</code> (required), <code>as_of</code>?, <code>weights</code>? (policy sliders), <code>stream</code>? — <code>true</code> for SSE, omit for a single JSON response.</p>
+<h3>Purpose</h3><p>The chat bubble. The <b>agent selects and narrates; it never calculates</b> — every fact in the stream comes from a tool call. The frontend renders deterministic events (<code>tool_result</code>, <code>rule_check</code>, <code>answer</code>) first and the prose last, so the reasoning is visibly the primary surface. This is the "watch the system think" demo beat.</p>
+<h3>200 — Success (text/event-stream)</h3><pre>event: status       data: {"type":"status","text":"Tracing P-2291 and enumerating legal cover…"}
+event: tool_call    data: {"type":"tool_call","id":"t1","tool":"find_options","args":{"pairing_id":"P-2291","role":"Captain","callout_utc":"2026-09-15T05:00:00Z"}}
+event: tool_result  data: {"type":"tool_result","id":"t1","tool":"find_options","summary":"150 → 6 legal (+2 near-miss)","data":{"legal":6},"ms":41}
+event: rule_check   data: {"type":"rule_check","rule_id":"RULE-DUTY-02","subject":"C-2087","status":"FAIL","detail":"would exceed 60h/7d by 1h20m on 2026-09-15 (total 61.33h)","used":61.33,"limit":60.0,"headroom":-1.33,"date":"2026-09-15"}
+event: token        data: {"type":"token","text":"C-3310 is "}
+event: answer       data: {"type":"answer","tier":2,"intent":"FIND_REPLACEMENT","entities":{"crew_id":"C-1042","pairing_id":"P-2291"},"answer":{ /* tier-specific — funnel, options[], near_misses[], excluded[] — same shape as endpoint 8 */ },"narrative":"C-3310 is the cleanest cover …","citations":[{"kind":"rule","id":"RULE-DUTY-02"}],"confidence":"high","unknowns":[]}
+event: abstain      data: {"type":"abstain","reason":"Nothing in the dataset supports that.","needed":["a live METAR feed"]}
+event: done         data: {"type":"done","elapsed_ms":1900,"grounded":true}
+event: error        data: {"type":"error","code":"UNRESOLVED_ENTITY","message":"No pairing 'P-9999'.","hint":"Did you mean P-2291?"}</pre>
+<p>One <code>data:</code> line per event, JSON, with a <code>type</code> field. <code>abstain</code> and <code>error</code> are terminal alternatives to <code>answer</code>+<code>done</code>. Non-stream mode returns the <code>answer</code> object as a plain <code>200</code> body plus <code>"trace": [ … ]</code>.</p>
+<h3>400 / 500</h3><pre>{ "error": { "code": "VALIDATION_ERROR", "message": "query is required" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Advisor failed" } }</pre>
+<p class="sub">Full event contract: <code>docs/CONTRACT_RECONCILIATION.md</code>.</p>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 11</div>
+
+<!-- ───────────────────────────── 23 ───────────────────────────── -->
+<h2>23. Scenarios — list &amp; run <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">GET</span><span class="k">Endpoint</span><span class="v">/api/v1/scenarios</span></div>
+<div class="meta-row"><span class="k">Method</span><span class="v">POST</span><span class="k">Endpoint</span><span class="v">/api/v1/scenarios/{scenario_id}/run</span></div>
+<h3>Request</h3><pre>GET  /api/v1/scenarios
+POST /api/v1/scenarios/S2/run        { "stream": true }</pre>
+<h3>Purpose</h3><p>The scenario feed (S1–S6). <code>run</code> streams the identical SSE events as <code>/ask</code> for a prepared disruption — the demo's guided path.</p>
+<h3>200 — Success (list)</h3><pre>{
+  "data": [
+    { "id": "S2", "difficulty": "medium", "title": "Flagship: C-1042 sick — 2-day pairing", "tier": 3,
+      "prompt": "Captain C-1042 calls in sick at 05:00Z on 15 Sep for P-2291. Produce ranked resolution options." }
+  ],
+  "meta": { "count": 6 }
+}</pre>
+<h3>200 — Success (run)</h3><p>Same <code>text/event-stream</code> as endpoint 22.</p>
+<h3>404 / 500</h3><pre>{ "error": { "code": "SCENARIO_NOT_FOUND", "message": "Scenario not found" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to run scenario" } }</pre>
+
+<!-- ───────────────────────────── 24 ───────────────────────────── -->
+<h2>24. Re-rank Options <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">POST</span><span class="k">Endpoint</span><span class="v">/api/v1/rank</span></div>
+<h3>Request</h3><pre>POST /api/v1/rank
+{ "options": [ /* Option[] from endpoint 8 */ ],
+  "weights": { "cost": 1.4, "delay": 0.6, "pool": 0.8, "pairing": 1.0, "fairness": 0.3 } }</pre>
+<h3>Purpose</h3><p>The policy-slider path — re-order the current options by weighted score. <b>Deterministic, no LLM</b>, must be instant (the sliders debounce onto it).</p>
+<h3>200 — Success</h3><pre>{ "data": { "options": [ { "...": "same Option[], re-ranked, each with a _score" } ],
+  "weights": { "cost": 1.4, "delay": 0.6, "pool": 0.8, "pairing": 1.0, "fairness": 0.3 } } }</pre>
+<h3>400 / 500</h3><pre>{ "error": { "code": "VALIDATION_ERROR", "message": "options[] is required" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to rank" } }</pre>
+
+<!-- ───────────────────────────── 25 ───────────────────────────── -->
+<h2>25. Crew Notification Draft <span class="tag new">NEW</span></h2>
+<div class="meta-row"><span class="k">Method</span><span class="v">POST</span><span class="k">Endpoint</span><span class="v">/api/v1/crew/{crew_id}/notification</span></div>
+<h3>Request</h3><pre>POST /api/v1/crew/C-3310/notification    { "pairing_id": "P-2291" }</pre>
+<h3>Purpose</h3><p>The Tier-3 bonus — draft the callout message for the chosen crew member. Agent-backed or a template.</p>
+<h3>200 — Success</h3><pre>{ "data": { "draft": "Capt (C-3310) — you are called from reserve for pairing P-2291 on 15 Sep: DX412 06:00Z, DX413, DX588. Report BLR 05:00Z. Please acknowledge within 30 minutes. — Crew Control" } }</pre>
+<h3>404 / 500</h3><pre>{ "error": { "code": "CREW_NOT_FOUND", "message": "Crew member not found" } }
+{ "error": { "code": "INTERNAL_ERROR", "message": "Unable to draft notification" } }</pre>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 12</div>
+
+<!-- ───────────────────────────── SUMMARY ───────────────────────────── -->
+<h2>Parameter Reference — what each expects &amp; where it lives in the data</h2>
+<p>Dataset files: <code>crew.json · flights.json · rosters.json · duty_clocks.json · reserve_pool.json · certifications.json · rules.json · costs.json · risk_signals.json · scenarios.json</code>. "computed" = not stored; the backend derives it.</p>
+
+<h3>Path identifiers</h3>
+<table class="summary">
+<tr><th>Param</th><th>Used by</th><th>Expects</th><th>Maps to</th></tr>
+<tr><td class="m">flight_id</td><td>/flights/{id}, /flights/{id}/downstream</td><td>string <code>DX###-YYYY-MM-DD</code>, e.g. <code>DX412-2026-09-15</code> (flight_no + "-" + date)</td><td><code>flights.json[].flight_id</code></td></tr>
+<tr><td class="m">pairing_id</td><td>/pairings/{id}, /pairings/{id}/candidates, path &amp; query on legality / notification / decisions</td><td>string <code>P-####</code>, e.g. <code>P-2291</code></td><td><code>rosters.json.pairings[].pairing_id</code></td></tr>
+<tr><td class="m">crew_id</td><td>every <code>/crew/{id}/*</code></td><td>string <code>C-####</code>, e.g. <code>C-1042</code></td><td><code>crew.json[].crew_id</code> — FK in <code>duty_clocks.json</code>, <code>certifications.json</code>, <code>reserve_pool.json</code>, <code>risk_signals.json</code>, <code>rosters.json…crew[].crew_id</code></td></tr>
+<tr><td class="m">rule_id</td><td>/rules, query on /crew/{id}/legality verdicts</td><td>one of the 7: <code>RULE-FDP-01 … RULE-BASE-07</code></td><td><code>rules.json.rules[].rule_id</code></td></tr>
+<tr><td class="m">scenario_id</td><td>/scenarios/{id}/run</td><td>string <code>S1 … S6</code></td><td><code>scenarios.json[].scenario_id</code></td></tr>
+<tr><td class="m">alert_id</td><td>/alerts/{id}/ack, /resolve</td><td>string <code>AL-###</code></td><td>computed — alerts are a derived scan, no dataset row</td></tr>
+</table>
+
+<h3>Query filters</h3>
+<table class="summary">
+<tr><th>Param</th><th>Used by</th><th>R/O</th><th>Expects</th><th>Maps to</th></tr>
+<tr><td class="m">date</td><td>/flights (req), /crew, /crew/{id}/duty-clock, /alerts, /summary (req), /reserves, /decisions</td><td>req on flights &amp; summary, else opt (defaults to snapshot)</td><td><code>YYYY-MM-DD</code> within <code>2026-09-14 … 2026-09-20</code></td><td>the valid set = distinct <code>flights.json[].date</code>; published as <code>/meta.dates</code>. Matched against <code>flights.json[].date</code>, <code>rosters.json…days[].date</code>, <code>reserve_pool.json[].dates[]</code></td></tr>
+<tr><td class="m">from, to</td><td>/crew/{id}/assignments</td><td>opt</td><td><code>YYYY-MM-DD</code> range</td><td>filters <code>rosters.json.pairings[].days[].date</code></td></tr>
+<tr><td class="m">on</td><td>/crew/{id}/certifications</td><td>opt</td><td><code>YYYY-MM-DD</code> to evaluate expiry against (default snapshot)</td><td>compared to <code>certifications.json[].valid_to</code> / <code>.valid_from</code></td></tr>
+<tr><td class="m">station</td><td>/flights</td><td>opt</td><td>station code, e.g. <code>BLR</code>, <code>DEL</code> (8 total)</td><td>matches <code>flights.json[].dep_station</code> OR <code>.arr_station</code>. <i>v2 splits this into <code>dep_station</code> + <code>arr_station</code> — pick one.</i></td></tr>
+<tr><td class="m">aircraft</td><td>/flights</td><td>opt</td><td>tail, e.g. <code>VT-DXA</code> (6 tails)</td><td><code>flights.json[].aircraft</code>; also <code>rosters.json.pairings[].aircraft</code></td></tr>
+<tr><td class="m">status</td><td>/flights</td><td>opt</td><td><code>scheduled | at_risk | delayed | cancelled</code></td><td>computed from <code>delay_rank</code> / disruption state — not a dataset field</td></tr>
+<tr><td class="m">delay_rank</td><td>/flights</td><td>opt</td><td><code>critical | high | medium | low</code></td><td>computed by the mini-RIPPLE (see §4 formula) — not stored</td></tr>
+<tr><td class="m">sort</td><td>/flights</td><td>opt</td><td><code>delay_rank_score | dep_utc</code></td><td>UI hint, not data</td></tr>
+<tr><td class="m">role</td><td>/pairings/{id}/candidates (req), /crew, /reserves</td><td>req on candidates</td><td><b>title-case</b>: <code>Captain | First Officer | Senior Cabin Crew | Cabin Crew</code></td><td><code>crew.json[].rank</code>; also <code>rosters.json.pairings[].crew[].role</code>. <i>NB v2's sample uses <code>CAPTAIN</code> — the dataset is <code>Captain</code>.</i></td></tr>
+<tr><td class="m">base</td><td>/crew, /reserves</td><td>opt</td><td>station code, e.g. <code>BLR</code>, <code>DEL</code></td><td><code>crew.json[].base</code>; <code>reserve_pool.json[].base</code></td></tr>
+<tr><td class="m">status (crew)</td><td>/crew</td><td>opt</td><td><code>active | leave | training</code></td><td><code>crew.json[].status</code>. <i>v2 sample uses <code>ACTIVE</code> — dataset is lower-case <code>active</code>.</i></td></tr>
+<tr><td class="m">filter</td><td>/crew</td><td>opt (default <code>needs_attention</code>)</td><td><code>needs_attention | on_duty | off_duty | on_reserve | all</code></td><td>computed: <code>on_reserve</code> = crew in <code>reserve_pool.json[].crew_id</code> whose <code>dates[]</code> ∋ date · <code>on_duty</code> = in a <code>rosters.json</code> pairing day on that date · <code>needs_attention</code> = certs≤3d ∨ duty/flight headroom&lt;3h ∨ <code>rosters.json.flagged_exceptions</code> ∨ <code>risk_signals.json…score</code>≥0.7</td></tr>
+<tr><td class="m">q</td><td>/crew</td><td>opt</td><td>free text</td><td>substring match on <code>crew.json[].crew_id</code> and <code>.name</code></td></tr>
+<tr><td class="m">alerts: status / severity / type</td><td>/alerts</td><td>opt</td><td><code>status</code>: open\|ack\|resolved · <code>severity</code>: critical\|warning\|info · <code>type</code>: DUTY_LIMIT_NEAR \| CERT_EXPIRING \| FLIGHT_AT_RISK \| RESERVE_POOL_LOW \| ROSTER_EXCEPTION \| DISRUPTION_REPORTED</td><td>all computed. <code>ROSTER_EXCEPTION</code> maps 1:1 to <code>rosters.json.flagged_exceptions[]</code>; <code>CERT_EXPIRING</code> scans <code>certifications.json[].valid_to</code>; <code>DUTY_LIMIT_NEAR</code> scans <code>duty_clocks.json</code></td></tr>
+<tr><td class="m">threshold</td><td>/risk-signals</td><td>opt</td><td>float <code>0.0 … 1.0</code></td><td>filters <code>risk_signals.json[].disruption_risk_score &ge; threshold</code></td></tr>
+<tr><td class="m">covers_report_utc</td><td>/reserves</td><td>opt</td><td>ISO-8601 UTC datetime</td><td>its HH:MM tested against <code>reserve_pool.json[].oncall_window_utc.{start,end}</code> → <code>covers: bool</code></td></tr>
+<tr><td class="m">callout_utc</td><td>/pairings/{id}/candidates</td><td>req</td><td>ISO-8601 UTC datetime — the disruption / callout instant</td><td>not stored (cf. <code>scenarios.json[].event.reported_utc</code>); used to test reserve on-call windows and rest</td></tr>
+<tr><td class="m">delay_min</td><td>/flights/{id}/downstream</td><td>opt (default 90)</td><td>integer minutes ≥ 0</td><td>simulation input — not stored</td></tr>
+<tr><td class="m">delay_h</td><td>/pairings/{id}/candidates, /crew/{id}/legality</td><td>opt</td><td>float hours ≥ 0</td><td>simulation input — added to the duty length before FDP-01 etc.</td></tr>
+</table>
+
+<h3>Request-body fields</h3>
+<table class="summary">
+<tr><th>Field</th><th>Used by</th><th>R/O</th><th>Expects</th><th>Maps to</th></tr>
+<tr><td class="m">query</td><td>POST /ask</td><td>req</td><td>free-text controller question</td><td>—</td></tr>
+<tr><td class="m">as_of</td><td>POST /ask</td><td>opt</td><td>ISO-8601 UTC (default <code>2026-09-14T18:00:00Z</code>)</td><td>the dataset snapshot instant</td></tr>
+<tr><td class="m">stream</td><td>POST /ask, /scenarios/{id}/run</td><td>opt</td><td>boolean — <code>true</code> ⇒ <code>text/event-stream</code></td><td>—</td></tr>
+<tr><td class="m">weights</td><td>POST /ask, /rank, /decisions</td><td>opt (req on /rank)</td><td>object of floats, keys <code>cost, delay, pool, pairing, fairness</code> (≈ 0–2)</td><td>policy-slider concept — not in the dataset</td></tr>
+<tr><td class="m">options</td><td>POST /rank</td><td>req</td><td><code>Option[]</code> — the array from <code>/pairings/{id}/candidates</code></td><td>echoed shape; each carries <code>cost_inr</code> from <code>costs.json</code> rates</td></tr>
+<tr><td class="m">disruption_ref</td><td>POST /decisions</td><td>req</td><td>string — conventionally a <code>flight_id</code>, <code>pairing_id</code>, or <code>scenario_id</code></td><td>free ref; no FK enforced</td></tr>
+<tr><td class="m">chosen_option</td><td>POST /decisions</td><td>req</td><td>an <code>Option</code> object from <code>/candidates</code></td><td>echoed back in the stored <code>Decision</code></td></tr>
+<tr><td class="m">accepted</td><td>POST /decisions</td><td>opt (default true)</td><td>boolean</td><td>—</td></tr>
+<tr><td class="m">note</td><td>POST /decisions, /alerts/{id}/resolve</td><td>opt</td><td>free text</td><td>—</td></tr>
+<tr><td class="m">pairing_id (body)</td><td>POST /crew/{id}/notification</td><td>req</td><td><code>P-####</code></td><td><code>rosters.json.pairings[].pairing_id</code></td></tr>
+</table>
+
+<h3>Value sets (validate against these)</h3>
+<ul>
+  <li><b>dates</b> — <code>2026-09-14 … 2026-09-20</code> (distinct <code>flights.json[].date</code>); publish via <code>/meta.dates</code>.</li>
+  <li><b>stations</b> — the distinct union of <code>flights.json[].dep_station</code> and <code>.arr_station</code> (8; hub <code>BLR</code>).</li>
+  <li><b>aircraft tails</b> — distinct <code>flights.json[].aircraft</code> (6: 4× A320, 2× ATR72).</li>
+  <li><b>rank / role</b> — <code>Captain</code>, <code>First Officer</code>, <code>Senior Cabin Crew</code>, <code>Cabin Crew</code> (title-case).</li>
+  <li><b>crew status</b> — <code>active</code>, <code>leave</code>, <code>training</code> (lower-case).</li>
+  <li><b>rule_id</b> — <code>RULE-FDP-01, RULE-DUTY-02, RULE-FLT-03, RULE-REST-04, RULE-QUAL-05, RULE-CERT-06, RULE-BASE-07</code>.</li>
+  <li><b>id formats</b> — crew <code>C-####</code> · pairing <code>P-####</code> · flight <code>DX###-YYYY-MM-DD</code> · scenario <code>S#</code>.</li>
+</ul>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Parameter reference</div>
+
+<h2>Endpoint Summary</h2>
+<table class="summary">
+<tr><th>#</th><th>Method</th><th>Endpoint</th><th>Δ</th><th>Purpose</th></tr>
+<tr><td>1</td><td class="m">GET</td><td class="m">/api/v1/meta</td><td>NEW</td><td>Snapshot, week bounds, valid dates, counts. Boots the date picker.</td></tr>
+<tr><td>2</td><td class="m">GET</td><td class="m">/api/v1/rules</td><td>as v2</td><td>The 7 rule definitions (+ optional gloss).</td></tr>
+<tr><td>3</td><td class="m">GET</td><td class="m">/api/v1/costs</td><td>RESHAPE</td><td>Rate card — real costs.json keys.</td></tr>
+<tr><td>4</td><td class="m">GET</td><td class="m">/api/v1/flights</td><td>RESHAPE</td><td>Board rows + delay_rank, slack, downstream_count, pairing_id.</td></tr>
+<tr><td>5</td><td class="m">GET</td><td class="m">/api/v1/flights/{id}</td><td>RESHAPE</td><td>Flight + crew, duty bracket, crew pressure.</td></tr>
+<tr><td>6</td><td class="m">GET</td><td class="m">/api/v1/flights/{id}/downstream</td><td>NEW</td><td>Tail cascade with cumulative delay + same_pairing.</td></tr>
+<tr><td>7</td><td class="m">GET</td><td class="m">/api/v1/pairings/{id}</td><td>RESHAPE</td><td>Pairing + inline leg dep/arr + overnight_station.</td></tr>
+<tr><td>8</td><td class="m">GET</td><td class="m">/api/v1/pairings/{id}/candidates</td><td>RESHAPE</td><td>Funnel + ranked options + near_misses + excluded verdicts.</td></tr>
+<tr><td>9</td><td class="m">GET</td><td class="m">/api/v1/crew</td><td>RESHAPE</td><td>Crew rows + on_duty, headroom, risk, attention flag.</td></tr>
+<tr><td>10</td><td class="m">GET</td><td class="m">/api/v1/crew/{id}</td><td>as v2</td><td>Flat profile.</td></tr>
+<tr><td>11</td><td class="m">GET</td><td class="m">/api/v1/crew/{id}/duty-clock</td><td>as v2</td><td>Window sums + headroom + rest_ok.</td></tr>
+<tr><td>12</td><td class="m">GET</td><td class="m">/api/v1/crew/{id}/certifications</td><td>RESHAPE</td><td>Certs + days_to_expiry + expiring_soon.</td></tr>
+<tr><td>13</td><td class="m">GET</td><td class="m">/api/v1/crew/{id}/risk</td><td>as v2</td><td>Latest disruption-risk signal.</td></tr>
+<tr><td>14</td><td class="m">GET</td><td class="m">/api/v1/crew/{id}/assignments</td><td>NEW</td><td>This week's pairings/legs for the crew member.</td></tr>
+<tr><td>15</td><td class="m">GET</td><td class="m">/api/v1/crew/{id}/legality</td><td>RESHAPE</td><td>All 7 rule verdicts with used/limit/headroom.</td></tr>
+<tr><td>16</td><td class="m">GET</td><td class="m">/api/v1/reserves</td><td>RESHAPE</td><td>Pool + role/name/window/covers/reachability.</td></tr>
+<tr><td>17</td><td class="m">GET</td><td class="m">/api/v1/alerts</td><td>NEW</td><td>HITL queue — deterministic world scan.</td></tr>
+<tr><td>18</td><td class="m">POST</td><td class="m">/api/v1/alerts/{id}/ack · /resolve</td><td>NEW</td><td>Alert lifecycle.</td></tr>
+<tr><td>19</td><td class="m">GET</td><td class="m">/api/v1/summary</td><td>RESHAPE</td><td>Sidebar in one call — duty states, flight risk mix, alerts, pool.</td></tr>
+<tr><td>20</td><td class="m">GET</td><td class="m">/api/v1/risk-signals</td><td>as v2</td><td>Risk list, sorted, thresholded.</td></tr>
+<tr><td>21</td><td class="m">POST/GET</td><td class="m">/api/v1/decisions</td><td>NEW</td><td>Record + list the controller's committed decisions.</td></tr>
+<tr><td>22</td><td class="m">POST</td><td class="m">/api/v1/ask</td><td>NEW</td><td>Advisor SSE — status·tool_call·tool_result·rule_check·token·answer·abstain·done.</td></tr>
+<tr><td>23</td><td class="m">GET/POST</td><td class="m">/api/v1/scenarios · /{id}/run</td><td>NEW</td><td>Scenario feed + guided SSE run.</td></tr>
+<tr><td>24</td><td class="m">POST</td><td class="m">/api/v1/rank</td><td>NEW</td><td>Policy-slider re-rank, no LLM, instant.</td></tr>
+<tr><td>25</td><td class="m">POST</td><td class="m">/api/v1/crew/{id}/notification</td><td>NEW</td><td>Callout message draft (Tier-3 bonus).</td></tr>
+</table>
+
+<h2>Implementation Notes</h2>
+<ul>
+  <li><b>One core, two façades.</b> Every REST endpoint and every agent tool call the same <code>core/</code> function. The agent's tools are a subset — <code>/pairings/{id}/candidates</code>, <code>/crew/{id}/legality</code>, <code>/flights/{id}/downstream</code>, <code>/rank</code>.</li>
+  <li><b>Derived vs. raw.</b> Endpoints 4, 6, 8, 9, 12, 15 return computed fields. If <code>core/</code> cannot deliver <code>delay_rank</code> / crew <code>attention</code> for v1, say so — the board and crew list are designed around them and the frontend needs to know before wiring.</li>
+  <li><b>Envelope.</b> <code>{ "data": … }</code> on reads, <code>+ "meta": { "count" }</code> on collections, <code>{ "error": { code, message, details? } }</code> on failure. Keep <code>"basis"</code> on derived bodies.</li>
+  <li><b>SSE.</b> <code>text/event-stream</code>, one JSON <code>data:</code> line per event, each with a <code>type</code>. If the team goes sync <code>/advisory</code> instead, its response must still carry the funnel, excluded and near_misses (endpoint 8's payload) or the auditability UI has nothing to show.</li>
+  <li><b>Optional, not blocking.</b> <code>GET /aircraft</code> and <code>GET /stations</code> — the frontend derives tails and station codes from <code>/flights</code> for v1; add them if a real fleet/station panel lands.</li>
+  <li>Do not expose DB/vector internals (embeddings, search vectors). Sample values here are illustrative but drawn from the real dataset (C-1042, P-2291, RULE-DUTY-02 = 61.33h); the live API computes from <code>core/</code>.</li>
+</ul>
+
+<div class="foot">Crew Operations Advisor — REST API (Frontend-required) &nbsp;·&nbsp; Page 13 · end</div>
+
+</body>
+</html>

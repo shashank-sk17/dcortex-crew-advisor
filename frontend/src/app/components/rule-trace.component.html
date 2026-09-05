@@ -1,0 +1,20 @@
+<div class="card">
+  <div class="card__title">7-rule legality trace</div>
+  @if (rows().length === 0) {
+    <p class="muted">No rule checks yet. LEX verdicts stream here one predicate at a time.</p>
+  }
+  @for (row of rows(); track row.subject) {
+    <div class="subj">
+      <span class="chip">{{ row.subject }}</span>
+      <span class="subj__summary">
+        {{ passCount(row) }}/{{ allRules.length }} pass
+        @if (failCount(row) > 0) { <span class="chip chip--fail">{{ failCount(row) }} fail</span> }
+      </span>
+    </div>
+    <div class="grid">
+      @for (rid of allRules; track rid) {
+        <app-rule-chip [ruleId]="rid" [label]="labels[rid]" [check]="row.checks[rid] ?? null" />
+      }
+    </div>
+  }
+</div>

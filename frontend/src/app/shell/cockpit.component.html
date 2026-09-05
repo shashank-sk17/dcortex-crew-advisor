@@ -1,0 +1,45 @@
+<div class="cockpit">
+  <header class="topbar">
+    <span class="brand">dCortex · Crew Ops</span>
+    <nav class="nav">
+      <a routerLink="/board" routerLinkActive="on">Flights</a>
+      <a routerLink="/crew" routerLinkActive="on">Crew</a>
+    </nav>
+    <span class="spacer"></span>
+    <label class="date">
+      Day
+      <select [value]="state.date()" (change)="state.setDate($any($event.target).value)">
+        @for (d of state.meta()?.dates ?? []; track d) { <option [value]="d">{{ d }}</option> }
+      </select>
+    </label>
+    <span class="chip" [class.chip--warn]="mock" [class.chip--pass]="!mock">{{ mock ? 'MOCK' : 'LIVE' }}</span>
+  </header>
+
+  <div class="body" [class.left-collapsed]="!leftOpen()" [class.right-collapsed]="!rightOpen()">
+    <aside class="left">
+      <button class="rail-tab rail-tab--left" type="button" (click)="toggleLeft()"
+              [attr.aria-expanded]="leftOpen()" aria-label="Toggle sidebar">
+        <span class="rail-tab__chev" [class.flip]="!leftOpen()">‹</span>
+      </button>
+      @if (leftOpen()) {
+        <app-sidebar />
+      } @else {
+        <span class="rail-label">Sidebar</span>
+      }
+    </aside>
+    <main class="center"><router-outlet /></main>
+    <aside class="right">
+      <button class="rail-tab rail-tab--right" type="button" (click)="toggleRight()"
+              [attr.aria-expanded]="rightOpen()" aria-label="Toggle alerts">
+        <span class="rail-tab__chev" [class.flip]="!rightOpen()">›</span>
+      </button>
+      @if (rightOpen()) {
+        <app-alerts-panel />
+      } @else {
+        <span class="rail-label">Alerts</span>
+      }
+    </aside>
+  </div>
+
+  <app-chat-bubble />
+</div>

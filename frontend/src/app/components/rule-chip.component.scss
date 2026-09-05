@@ -1,0 +1,13 @@
+.rc {
+  display: grid; grid-template-columns: 108px 18px auto 1fr; gap: 8px; align-items: baseline;
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface-2); font-size: 12px;
+}
+.rc--pass { border-color: var(--pass-line); }
+.rc--fail { border-color: var(--fail-line); background: var(--fail-bg); }
+.rc__id { color: var(--fg-1); }
+.rc__status { text-align: center; }
+.rc--pass .rc__status { color: var(--pass); }
+.rc--fail .rc__status { color: var(--fail); }
+.rc__margin { color: var(--fg-2); white-space: nowrap; }
+.rc__detail { color: var(--fg-2); }

@@ -1,0 +1,7 @@
+.subj { display: flex; align-items: center; gap: 10px; margin: 12px 0 6px; }
+.subj:first-of-type { margin-top: 0; }
+.subj__summary {
+  font-size: 12px; color: var(--fg-2);
+  display: flex; gap: 6px; align-items: center;
+}
+.grid { display: grid; gap: 4px; }

@@ -26,3 +26,7 @@ scratch/
 # Claude Code local session state
 .claude/settings.json
 .claude/settings.local.json
+
+# personal design tooling (not team-shared unless agreed)
+.claude/
+.impeccable/

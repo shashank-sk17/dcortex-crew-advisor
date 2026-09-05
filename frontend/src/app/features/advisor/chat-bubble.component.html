@@ -1,0 +1,22 @@
+@if (bus.open()) {
+  <div class="panel">
+    <header class="panel__head">
+      <span>Advisor</span>
+      @if (store.busy()) { <span class="chip chip--warn">thinking…</span> }
+      <span class="spacer"></span>
+      <button class="ghost" (click)="bus.toggle()">–</button>
+    </header>
+    <div class="panel__body">
+      <div class="panel__chat">
+        <div class="panel__scroll"><app-conversation /></div>
+        <app-chat-composer />
+      </div>
+      <div class="panel__rail"><app-evidence-rail /></div>
+    </div>
+  </div>
+} @else {
+  <button class="fab" (click)="bus.toggle()">
+    💬 Ask the advisor
+    @if (store.busy()) { <span class="fab__dot"></span> }
+  </button>
+}

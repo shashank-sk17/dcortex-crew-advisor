@@ -1,0 +1,93 @@
+{
+  "match": { "any": ["who do i use", "who do i call", "if c-2087", "cover p-2291", "sick for p-2291", "c-1042 called in sick", "c-1042 sick"], "tier": 2 },
+  "status": "Tracing P-2291 and enumerating legal cover…",
+  "trace": [
+    { "tool": "lookup", "args": { "entity": "pairing", "filters": { "pairing_id": "P-2291" } },
+      "summary": "P-2291 is a 2-day pairing — day 1 DX412/DX413/DX588, day 2 DX589/DX590/DX591; overnights at DEL",
+      "data": { "aircraft": "VT-DXC", "days": 2, "source": "rosters.json" }, "ms": 6 },
+    { "tool": "ripple", "args": { "event": { "type": "SICK_CREW", "crew_id": "C-1042", "pairing_id": "P-2291" } },
+      "summary": "3 legs uncrewed day 1; 486 pax; day 2 orphaned at DEL",
+      "data": { "uncovered": 3, "at_risk": 3, "pax": 486, "source": "flights.json + rosters.json" }, "ms": 22 },
+    { "tool": "find_options", "args": { "pairing_id": "P-2291", "role": "Captain", "callout_utc": "2026-09-15T05:00:00Z" },
+      "summary": "150 crew → 6 legal (+2 near-miss); 6 blocked with full traces",
+      "data": { "evaluated": 32, "legal": 6, "near_miss": 2, "source": "rules.json + duty_clocks.json + costs.json" }, "ms": 41 }
+  ],
+  "rule_checks": [
+    { "rule_id": "RULE-QUAL-05", "subject": "C-3310", "status": "PASS", "detail": "A320 rating valid; P-2291 is A320 throughout." },
+    { "rule_id": "RULE-REST-04", "subject": "C-3310", "status": "PASS", "margin": "4h10m spare", "detail": "Last release 14 Sep; report 15 Sep 06:00Z gives >12h rest." },
+    { "rule_id": "RULE-BASE-07", "subject": "C-3310", "status": "PASS", "detail": "BLR own-base reserve callout; no deadhead cost." },
+    { "rule_id": "RULE-DUTY-02", "subject": "C-2087", "status": "FAIL", "margin": "1h20m over",
+      "detail": "would exceed 60h/7d by 1h20m on 2026-09-15 (total 61.33h)", "used": 61.33, "limit": 60.0, "headroom": -1.33, "date": "2026-09-15" },
+    { "rule_id": "RULE-BASE-07", "subject": "C-3305", "status": "FAIL",
+      "detail": "reserve on-call window 00:00-05:30Z does not cover required report 06:00Z" }
+  ],
+  "answer": {
+    "tier": 2,
+    "intent": "FIND_REPLACEMENT",
+    "entities": { "crew_id": "C-1042", "pairing_id": "P-2291", "role": "Captain", "callout_utc": "2026-09-15T05:00:00Z" },
+    "answer": {
+      "kind": "replacement",
+      "uncovered_flights": ["DX412-2026-09-15", "DX413-2026-09-15", "DX588-2026-09-15"],
+      "at_risk_flights": ["DX589-2026-09-16", "DX590-2026-09-16", "DX591-2026-09-16"],
+      "passengers_affected": 486,
+      "funnel": [
+        { "stage": "all_crew",  "count": 150 },
+        { "stage": "role",      "count": 32, "dropped": 118, "reason": "not Captain" },
+        { "stage": "qualified", "count": 21, "dropped": 11,  "reason": "RULE-QUAL-05 / status (no A320 rating, on leave, training)" },
+        { "stage": "available", "count": 12, "dropped": 9,   "reason": "duty conflict — already rostered" },
+        { "stage": "legal",     "count": 6,  "dropped": 6,   "reason": "rule breach — full trace attached" }
+      ],
+      "options": [
+        { "action": "Assign Captain C-3310 (reserve callout)", "crew_id": "C-3310", "legal": true,
+          "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"],
+          "cost_inr": 18500, "delay_hours": 0.0, "rank": 1,
+          "cost_breakdown": { "callout": 18500, "positioning": 0, "delay": 0 }, "blast_radius": 0, "coverage": "all 6 flights",
+          "reachability_minutes": 45, "reasoning": "BLR-based reserve, A320-rated, on-call 06:00–18:00 covers the 06:00Z report. No deadhead, no delay." },
+        { "action": "Assign Captain C-1526 (day-off callout)", "crew_id": "C-1526", "legal": true,
+          "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"],
+          "cost_inr": 24000, "delay_hours": 0.0, "rank": 2,
+          "cost_breakdown": { "callout": 24000, "positioning": 0, "delay": 0 }, "blast_radius": 0, "coverage": "all 6 flights",
+          "reasoning": "Day-off callout — legal and clean, ₹5,500 more than the reserve." },
+        { "action": "Assign Captain C-3983 (day-off callout)", "crew_id": "C-3983", "legal": true,
+          "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"],
+          "cost_inr": 24000, "delay_hours": 0.0, "rank": 3,
+          "cost_breakdown": { "callout": 24000, "positioning": 0, "delay": 0 }, "blast_radius": 0, "coverage": "all 6 flights",
+          "reasoning": "Equivalent day-off callout." }
+      ],
+      "near_misses": [
+        { "action": "Assign Captain C-2210 (reserve callout + deadhead from DEL)", "crew_id": "C-2210", "legal": true,
+          "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"],
+          "cost_inr": 41200, "delay_hours": 3.0, "rank": 5,
+          "cost_breakdown": { "callout": 18500, "positioning": 6500, "delay": 16200 }, "blast_radius": 2, "coverage": "all 6 flights",
+          "unlock": "legal via DX402 deadhead DEL→BLR — DX412 departs ~3h late",
+          "reasoning": "DEL-based reserve. Positioned on DX402 (arr 08:45Z), reports 09:00Z. ₹41,200 all-in vs ₹250,000 to cancel one leg." }
+      ],
+      "excluded": [
+        { "crew_id": "C-2087", "verdicts": [
+          { "rule_id": "RULE-DUTY-02", "status": "FAIL", "detail": "would exceed 60h/7d by 1h20m on 2026-09-15 (total 61.33h)", "used": 61.33, "limit": 60.0, "headroom": -1.33, "date": "2026-09-15" },
+          { "rule_id": "RULE-DUTY-02", "status": "FAIL", "detail": "would exceed 60h/7d by 1h05m on 2026-09-16 (total 61.08h)", "used": 61.08, "limit": 60.0, "headroom": -1.08, "date": "2026-09-16" }
+        ]},
+        { "crew_id": "C-3305", "verdicts": [
+          { "rule_id": "RULE-BASE-07", "status": "FAIL", "detail": "reserve on-call window 00:00-05:30Z does not cover required report 06:00Z" }
+        ]},
+        { "crew_id": "C-3315", "verdicts": [
+          { "rule_id": "RULE-QUAL-05", "status": "FAIL", "detail": "no A320 rating" }
+        ]},
+        { "crew_id": "C-2091", "verdicts": [
+          { "rule_id": "RULE-QUAL-05", "status": "FAIL", "detail": "no A320 rating (ATR72 only)" }
+        ]}
+      ]
+    },
+    "narrative": "Reserve Captain C-3310 is your cleanest option: BLR-based, A320-rated, on-call window covers the 06:00Z report, clears all seven rules with margin, ₹18,500. The obvious pick C-2087 is illegal — 1h20m over the 60h/7-day duty limit on day 1, and still over on day 2. If no reserve were free, C-2210 out of DEL becomes legal via the DX402 deadhead at ₹41,200 with a ~3h delay to DX412 — still far below the ₹250,000 cost of cancelling a single leg.",
+    "citations": [
+      { "kind": "rule", "id": "RULE-DUTY-02" },
+      { "kind": "rule", "id": "RULE-BASE-07" },
+      { "kind": "record", "source": "reserve_pool.json", "id": "C-3310" },
+      { "kind": "record", "source": "duty_clocks.json", "id": "C-2087" }
+    ],
+    "confidence": "high",
+    "unknowns": []
+  },
+  "narration": "Reserve Captain C-3310 is the cleanest cover — BLR-based, A320-rated, clears every rule, ₹18,500. C-2087 is 1h20m over the 7-day duty limit and is excluded. ",
+  "grounded": true
+}

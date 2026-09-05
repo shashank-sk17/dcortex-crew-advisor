@@ -1,0 +1,8 @@
+# Angular / node
+/node_modules
+/dist
+/.angular/cache
+/out-tsc
+npm-debug.log*
+*.tsbuildinfo
+.DS_Store

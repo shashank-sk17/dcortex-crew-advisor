@@ -133,6 +133,12 @@ Needs:
 
 <!-- Add pulses below. Newest first. -->
 
+### T-pre · Kiran (rev 2 — team pivot to REST view layer)
+Done: Full working cockpit console, `npm start` with **zero backend**. New layout: flights board (colour-coded by `delay_rank`), HITL alert panel (ack/resolve + deep-links), crew view (filters + detail drawer: duty clock, expiring certs, per-pairing 7-rule legality), sidebar (`/summary` + disruption watch-list), advisor chat bubble bottom-right (reuses the SSE stream + Tier 1/2/3 + abstain cards). **All 36 REST endpoints implemented as an in-app mock computed from the real dataset** (bundled to `src/assets/data/`). Components call one `API` token — `MockApiService` / `HttpApiService` both `implements ApiPort`; swap = `environment.useMock=false`. Dev + prod builds green. Full spec: `docs/REST_API_v1.md`.
+Doing: More Tier-1 advisor fixtures; wiring `RESOLUTION_PROPOSED` alert → decision log.
+Blocked: —
+Needs: **Gayathri** — `api/app.py` to the shapes in `docs/REST_API_v1.md` (take the `delay_rank` formula in §2 verbatim). **Shashank** — ratify `docs/CONTRACT_RECONCILIATION.md` for the `/ask` SSE stream. **Kashifa** — `core/` fns the routes call (world, duty_clock, 7 LEX rules, cost, candidates, delay_rank, alert scan).
+
 ### T-pre · Shashank
 Done: Repo bootstrapped, README + architecture + task board written. Dataset profiled — 150 crew / 147 flights / 7 rules / < 700 KB, so no database.
 Doing: Freezing `docs/API_CONTRACT.md` and the tool schemas.

@@ -1,0 +1,23 @@
+<div class="card">
+  <div class="card__title">Disruption impact</div>
+  <div class="grid">
+    <div class="metric">
+      <span class="metric__n">{{ data.uncovered_flights.length }}</span>
+      <span class="metric__l">uncrewed now</span>
+      <div class="flights">
+        @for (f of data.uncovered_flights; track f) { <span class="chip chip--fail mono">{{ short(f) }}</span> }
+      </div>
+    </div>
+    <div class="metric">
+      <span class="metric__n">{{ data.at_risk_flights.length }}</span>
+      <span class="metric__l">at risk (day 2)</span>
+      <div class="flights">
+        @for (f of data.at_risk_flights; track f) { <span class="chip chip--warn mono">{{ short(f) }}</span> }
+      </div>
+    </div>
+    <div class="metric">
+      <span class="metric__n">{{ data.passengers_affected }}</span>
+      <span class="metric__l">passengers</span>
+    </div>
+  </div>
+</div>

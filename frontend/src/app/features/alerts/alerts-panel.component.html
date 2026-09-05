@@ -1,0 +1,47 @@
+<div class="ap">
+  <div class="ap__hero">
+    <div class="ap__hero-stat ap__hero-stat--fail">
+      <span class="focus-stat focus-stat--fail">{{ critical().length }}</span>
+      <span class="ap__hero-label">critical</span>
+    </div>
+    <div class="ap__hero-stat ap__hero-stat--warn">
+      <span class="focus-stat focus-stat--warn">{{ warning().length }}</span>
+      <span class="ap__hero-label">warning</span>
+    </div>
+  </div>
+
+  <div class="ap__sections">
+    <app-accordion-item title="Critical" [badge]="critical().length" [open]="openSection() === 'critical'" (toggle)="toggle('critical')">
+      @for (a of critical(); track a.id) { <ng-container *ngTemplateOutlet="row; context: { $implicit: a }" /> }
+      @if (!critical().length) { <p class="muted ap__empty">Nothing critical.</p> }
+    </app-accordion-item>
+
+    <app-accordion-item title="Warning" [badge]="warning().length" [open]="openSection() === 'warning'" (toggle)="toggle('warning')">
+      @for (a of warning(); track a.id) { <ng-container *ngTemplateOutlet="row; context: { $implicit: a }" /> }
+      @if (!warning().length) { <p class="muted ap__empty">No warnings.</p> }
+    </app-accordion-item>
+
+    <app-accordion-item title="Info" [badge]="info().length" [open]="openSection() === 'info'" (toggle)="toggle('info')">
+      @for (a of info(); track a.id) { <ng-container *ngTemplateOutlet="row; context: { $implicit: a }" /> }
+      @if (!info().length) { <p class="muted ap__empty">Nothing to note.</p> }
+    </app-accordion-item>
+  </div>
+
+  @if (!visible().length) { <p class="muted ap__all-clear">No open alerts for this day.</p> }
+</div>
+
+<ng-template #row let-a>
+  <div class="al" [attr.data-sev]="a.severity">
+    <div class="al__title">{{ a.title }}</div>
+    <div class="al__detail">{{ a.detail }}</div>
+    <div class="al__actions">
+      @if (a.suggested_action?.ask_prompt) {
+        <button (click)="ask(a.suggested_action!.ask_prompt!)">{{ a.suggested_action!.label }}</button>
+      } @else if (a.suggested_action?.deep_link) {
+        <button (click)="go(a.suggested_action!.deep_link!)">{{ a.suggested_action!.label }}</button>
+      }
+      <button class="ghost" (click)="ack(a)">Ack</button>
+      <button class="ghost" (click)="resolve(a)">Resolve</button>
+    </div>
+  </div>
+</ng-template>

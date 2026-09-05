@@ -1,0 +1,16 @@
+<div class="tp">
+  <div class="tp__title">Reasoning trail <span class="muted">· always on, never a debug toggle</span></div>
+  @for (s of steps; track s.id) {
+    <details class="step" [class.step--pending]="s.pending">
+      <summary>
+        <span class="step__dot" [class.step__dot--done]="!s.pending"></span>
+        <span class="mono step__tool">{{ s.tool }}</span>
+        <span class="step__summary">{{ s.pending ? 'running…' : s.summary }}</span>
+        @if (s.ms != null) { <span class="step__ms mono">{{ s.ms }}ms</span> }
+      </summary>
+      <pre class="step__args">{{ s.args | json }}</pre>
+      @if (s.data) { <pre class="step__data">{{ s.data | json }}</pre> }
+    </details>
+  }
+  @if (!steps.length) { <p class="muted">Tool calls appear here as the agent works.</p> }
+</div>
