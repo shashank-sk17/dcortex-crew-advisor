@@ -35,7 +35,9 @@ def get_crew():
         with get_db_connection() as conn:
             with conn.cursor() as cur:
 
+                # -------------------------------------------------
                 # 1. Get crew
+                # -------------------------------------------------
                 query = """
                     SELECT
                         crew_id,
@@ -78,7 +80,9 @@ def get_crew():
                 cur.execute(query, params)
                 crew_rows = cur.fetchall()
 
+                # -------------------------------------------------
                 # 2. Get assignments for requested date
+                # -------------------------------------------------
                 assignment_map = {}
 
                 if date:
@@ -111,7 +115,9 @@ def get_crew():
                                 "report_utc": row[4]
                             }
 
+                # -------------------------------------------------
                 # 3. Get latest duty clock
+                # -------------------------------------------------
                 cur.execute("""
                     SELECT DISTINCT ON (crew_id)
                         crew_id,
@@ -125,7 +131,9 @@ def get_crew():
                     for row in cur.fetchall()
                 }
 
+                # -------------------------------------------------
                 # 4. Get latest risk
+                # -------------------------------------------------
                 cur.execute("""
                     SELECT DISTINCT ON (crew_id)
                         crew_id,
@@ -139,7 +147,26 @@ def get_crew():
                     for row in cur.fetchall()
                 }
 
-        # 5. Build response
+                # -------------------------------------------------
+                # 5. Get reserve crew for requested date
+                # -------------------------------------------------
+                reserve_map = set()
+
+                if date:
+                    cur.execute("""
+                        SELECT DISTINCT crew_id
+                        FROM reserve_pool
+                        WHERE %s = ANY(dates)
+                    """, (date,))
+
+                    reserve_map = {
+                        row[0]
+                        for row in cur.fetchall()
+                    }
+
+        # ---------------------------------------------------------
+        # 6. Build response
+        # ---------------------------------------------------------
         crew = []
 
         for row in crew_rows:
@@ -149,12 +176,15 @@ def get_crew():
                 rank,
                 base_value,
                 ratings,
-                seniority,
+                senioriority,
                 reachability_minutes,
                 crew_status
             ) = row
 
             assignment = assignment_map.get(crew_id)
+
+            # Reserve is determined from reserve_pool for the date
+            on_reserve = crew_id in reserve_map
 
             duty_value = duty_map.get(crew_id)
 
@@ -199,7 +229,9 @@ def get_crew():
                     "Disruption risk score is high"
                 )
 
+            # -----------------------------------------------------
             # Filters
+            # -----------------------------------------------------
             if crew_filter == "needs_attention" and not reasons:
                 continue
 
@@ -209,9 +241,8 @@ def get_crew():
             if crew_filter == "off_duty" and on_duty:
                 continue
 
-            if crew_filter == "on_reserve":
-                if str(crew_status).lower() != "reserve":
-                    continue
+            if crew_filter == "on_reserve" and not on_reserve:
+                continue
 
             crew.append({
                 "crew_id": crew_id,
@@ -219,11 +250,12 @@ def get_crew():
                 "rank": rank,
                 "base": base_value,
                 "ratings": ratings,
-                "seniority": seniority,
+                "seniority": senioriority,
                 "reachability_minutes": reachability_minutes,
                 "status": crew_status,
 
                 "on_duty": on_duty,
+                "on_reserve": on_reserve,
 
                 "current_assignment": {
                     "pairing_id": (
@@ -251,8 +283,7 @@ def get_crew():
                 "attention": {
                     "flag": len(reasons) > 0,
                     "reasons": reasons
-                },
-
+                }
             })
 
         return jsonify({
@@ -269,7 +300,7 @@ def get_crew():
                 "message": "Unable to retrieve crew"
             }
         }), 500
-    
+       
 @crew_bp.get("/api/v1/crew/<crew_id>")
 def get_crew_member(crew_id):
     try:
