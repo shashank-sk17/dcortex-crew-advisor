@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent import explainer
 from agent.advisor import Advisor, AdvisorConfig
 from agent.entities import CREW_RE, Entities, extract
 from agent.llm import LLM
@@ -123,6 +124,22 @@ class Exchange:
         return None
 
 
+def _name_of(record: Any, crew_id: str) -> str:
+    """`Captain A. Nair (C-1042)` from an option or an exclusion row.
+
+    Both shapes turn up here — options are dataclasses, exclusions are plain
+    dicts — and a follow-up should read the same either way.
+    """
+    get = record.get if isinstance(record, dict) else (
+        lambda k, d=None: getattr(record, k, d))
+    # `rank` means two different things here. On an exclusion row it is the
+    # job — "Captain". On an Option it is the position in the ranking, an int,
+    # and it cannot be renamed because the answer keys compare against it
+    # (DECISIONS.md #10). So only a string is a job rank.
+    job = get("rank")
+    return explainer.who(crew_id, get("name"), job if isinstance(job, str) else None)
+
+
 @dataclass
 class Conversation:
     """A controller's session. Carries context so follow-ups mean something."""
@@ -205,27 +222,29 @@ class Conversation:
         if found is None:
             return None
         search, record, where = found
+        name = _name_of(record, crew_id)
 
         if where == "excluded":
             return self._from_prior(
-                f"{crew_id} was excluded: {record.get('reason', 'no reason recorded')}",
+                f"{name} was excluded: {record.get('reason', 'no reason recorded')}",
                 search, cites=record.get("rules", []))
 
         options = search.options
         top = options[0] if options else None
         if record is top:
             return self._from_prior(
-                f"{crew_id} *is* the recommendation — "
+                f"{name} *is* the recommendation — "
                 f"₹{record.cost_inr:,}"
                 + (f", {record.delay_hours}h delay." if record.delay_hours else ", no delay."),
                 search)
 
-        text = (f"{crew_id} is legal, ranked #{getattr(record, 'rank', '?')}: "
+        text = (f"{name} is legal, ranked #{getattr(record, 'rank', '?')}: "
                 f"₹{record.cost_inr:,}")
         if record.delay_hours:
             text += f" and delays the first departure by {record.delay_hours}h"
         if top is not None:
-            text += f", against ₹{top.cost_inr:,} for {top.crew_id}."
+            text += (f", against ₹{top.cost_inr:,} for "
+                     f"{_name_of(top, top.crew_id)}.")
         return self._from_prior(text, search)
 
     def _answer_decision(self, crew_id: str) -> AdvisorResponse | None:
@@ -238,8 +257,8 @@ class Conversation:
         if where == "excluded":
             # Refuse to book someone the rules engine rejected, and say why.
             return self._from_prior(
-                f"I cannot record {crew_id}: they were excluded — "
-                f"{chosen.get('reason', 'no reason recorded')}",
+                f"I cannot record {_name_of(chosen, crew_id)}: they were "
+                f"excluded — {chosen.get('reason', 'no reason recorded')}",
                 prior, cites=chosen.get("rules", []))
 
         self.decisions.append({

@@ -226,6 +226,9 @@ class ReplacementAnswer:
     options: list[Option] = field(default_factory=list)
     near_misses: list[Option] = field(default_factory=list)
     excluded: list[dict[str, Any]] = field(default_factory=list)
+    subject_name: str = ""
+    subject_rank: str = ""
+    """Who `subject` is. A verdict about "C-2087" is about a person."""
 
     # A direct legality question — "if C-2087 covers P-2291, does anything
     # breach?" — answers with verdicts rather than candidates.

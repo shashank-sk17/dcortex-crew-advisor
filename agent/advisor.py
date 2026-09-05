@@ -417,6 +417,8 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
         rec = _coerce(Option, [found["recommended"]]) if found.get("recommended") else []
         return ReplacementAnswer(
             subject=checked.get("crew_id"),
+            subject_name=checked.get("name") or "",
+            subject_rank=checked.get("rank") or "",
             legal=checked.get("legal"),
             verdicts=_coerce(RuleVerdict, checked.get("verdicts")),
             recommended=rec[0] if rec else None,

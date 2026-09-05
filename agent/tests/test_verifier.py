@@ -325,3 +325,36 @@ class TestClockClaims:
         from agent.verifier import normalise_clock
 
         assert normalise_clock(bad) is None
+
+
+class TestClockNormalisationIsNarrow:
+    """This is the one place the gate calls two different strings the same
+    fact, so the equivalence has to be exact rather than convenient."""
+
+    @pytest.mark.parametrize("value", ["06:00:30", "06:00:01"])
+    def test_non_zero_seconds_do_not_collapse(self, value):
+        """06:00:30 is not 06:00. Every timestamp in this dataset ends :00,
+        and the check must not depend on that staying true."""
+        from agent.verifier import normalise_clock
+
+        assert normalise_clock(value) is None
+
+    @pytest.mark.parametrize("value", ["06:00+05:30", "06:00:00-08:00"])
+    def test_a_non_utc_offset_does_not_normalise(self, value):
+        """06:00+05:30 is a different instant from 06:00Z."""
+        from agent.verifier import normalise_clock
+
+        assert normalise_clock(value) is None
+
+    def test_a_shifted_time_is_not_sourced_by_its_utc_twin(self):
+        from agent.schemas import TraceEntry
+
+        trace = [TraceEntry(tool="lookup",
+                            result={"report_utc": "2026-09-15T06:00:00+00:00"})]
+        assert not verify("Report 06:00+05:30.", trace).ok
+
+    @pytest.mark.parametrize("value", ["06:00", "06:00Z", "06:00:00", "06:00:00+00:00"])
+    def test_utc_spellings_still_collapse(self, value):
+        from agent.verifier import normalise_clock
+
+        assert normalise_clock(value) == "06:00"

@@ -62,6 +62,21 @@ def fmt_value(value: Any) -> str:
     return str(value)
 
 
+def who(crew_id: str | None, name: str | None = None,
+        rank: str | None = None) -> str:
+    """How a crew member is written, everywhere, without exception.
+
+    `Captain A. Nair (C-1042)` — the person first, because that is who the
+    controller phones, and the id in brackets because that is what goes into
+    the roster system and two people can share a surname. Falling back to the
+    bare id when no name is loaded is correct; inventing one is not.
+    """
+    if not crew_id:
+        return ""
+    label = " ".join(str(part) for part in (rank, name) if part)
+    return f"{label} ({crew_id})" if label else crew_id
+
+
 def _inr(amount: int) -> str:
     return f"₹{amount:,}"
 
@@ -237,7 +252,8 @@ def render_replacement(answer: ReplacementAnswer) -> str:
     lines: list[str] = []
 
     if answer.verdicts:
-        subject = answer.subject or "That assignment"
+        subject = who(answer.subject, answer.subject_name,
+                      answer.subject_rank) or "That assignment"
         blocking = [v for v in answer.verdicts if v.failed]
         if blocking:
             lines.append(f"▸ {subject} would breach "
@@ -481,11 +497,15 @@ Rules, in order of importance:
 2. Do NOT recommend anything, do NOT infer a situation, do NOT describe a
    problem. Nothing here is a disruption; it is a record. "Reduce their duty
    hours" is not an answer to "who is this".
-3. Do not assign a gender. The records hold an initial and a surname and
+3. Name every crew member as `Rank Name (C-XXXX)` the first time they appear
+   — "Captain A. Nair (C-1042)" — and by name after that. Never a bare id: a
+   controller phones a person. Never a name without the id somewhere: the id
+   is what goes into the roster system.
+4. Do not assign a gender. The records hold an initial and a surname and
    nothing else, so write the name, the rank, or "they".
-4. Lead with what was asked. Mention what a controller would want next only
+5. Lead with what was asked. Mention what a controller would want next only
    if it is in the rows — current pairing, duty headroom, anything expiring.
-5. No preamble, no "based on the data provided". Two to five sentences.
+6. No preamble, no "based on the data provided". Two to five sentences.
 """
 
 
@@ -495,6 +515,11 @@ You are writing for an airline crew controller under time pressure.
 Rewrite the structured summary below as you would say it to them: lead with
 the recommendation, then why, then what it costs and what it breaks. Cite rule
 ids inline where they decided something.
+
+Name every crew member as `Rank Name (C-XXXX)` the first time they appear —
+"Captain A. Nair (C-1042)" — and by name after that. Never a bare id, and
+never a name without its id somewhere. Do not assign a gender: the records
+hold an initial and a surname, so use the name, the rank, or "they".
 
 Absolute constraint: you may reword, reorder and compress. You may NOT add any
 identifier, number, name or claim that is not already present. If something is

@@ -182,3 +182,35 @@ class TestStatedRankIsCheckedAgainstTheRoster:
         c = Conversation(port=FixtureToolPort(), llm=PlaceholderLLM())
         c.ask("If I move FO C-2087 onto DX412, does anyone breach a duty limit?")
         assert "C-2087 is the Captain" in c.ask("no").narrative
+
+
+class TestCrewAreNamed:
+    """A controller phones a person, not an id. One spelling everywhere:
+    `Rank Name (C-XXXX)`."""
+
+    def test_the_helper_puts_the_id_in_brackets(self):
+        from agent.explainer import who
+
+        assert who("C-1042", "A. Nair", "Captain") == "Captain A. Nair (C-1042)"
+
+    def test_it_falls_back_to_the_id_rather_than_inventing_a_name(self):
+        from agent.explainer import who
+
+        assert who("C-1042") == "C-1042"
+        assert who(None) == ""
+
+    def test_an_option_rank_is_not_mistaken_for_a_job_rank(self):
+        """`Option.rank` is the position in the ranking and cannot be renamed
+        — the answer keys compare against it (DECISIONS.md #10)."""
+        from agent.conversation import _name_of
+        from agent.schemas import Option
+
+        option = Option(action="Assign", crew_id="C-3310", legal=True,
+                        rank=1, name="D. Reddy")
+        assert _name_of(option, "C-3310") == "D. Reddy (C-3310)"
+
+    def test_an_exclusion_row_is_named(self):
+        from agent.conversation import _name_of
+
+        row = {"crew_id": "C-2087", "name": "R. Iyer", "rank": "Captain"}
+        assert _name_of(row, "C-2087") == "Captain R. Iyer (C-2087)"

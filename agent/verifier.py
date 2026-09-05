@@ -70,16 +70,30 @@ def times_and_rest(text: str) -> tuple[list[str], str]:
 def normalise_clock(value: str) -> str | None:
     """`6:00`, `06:00Z`, `06:00:00+00:00` -> `06:00`. Anything else -> None.
 
-    Seconds are dropped because no report or release time in this dataset
-    carries them, and a trailing `:00` is a formatting artefact rather than a
-    claim about the world.
+    Deliberately narrow on both edges, because this is the one place the gate
+    treats two different strings as the same fact and a loose equivalence
+    here is a hole in it.
+
+    **Seconds are only dropped when they are zero.** `06:00:30` is not
+    `06:00`; conflating them would let a claim be a half-minute out and still
+    pass. Every timestamp in this dataset ends `:00`, so nothing is lost —
+    but the check does not depend on that staying true.
+
+    **Only UTC normalises.** `06:00+05:30` is a different instant from
+    `06:00Z`, so anything but Z or a zero offset returns None and has to
+    match literally. The dataset is entirely UTC; a future one might not be.
     """
-    match = re.fullmatch(r"(\d{1,2}):(\d{2})(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?",
-                         value.strip())
+    match = re.fullmatch(
+        r"(\d{1,2}):(\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:?\d{2})?", value.strip())
     if not match:
         return None
-    hour, minute = int(match.group(1)), match.group(2)
-    return f"{hour:02d}:{minute}" if hour < 24 else None
+    hour, minute, second, zone = match.groups()
+
+    if second not in (None, "00"):
+        return None
+    if zone not in (None, "Z", "+00:00", "-00:00", "+0000", "-0000"):
+        return None
+    return f"{int(hour):02d}:{minute}" if int(hour) < 24 else None
 
 
 ID_PATTERNS = (

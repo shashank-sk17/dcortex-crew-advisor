@@ -135,8 +135,11 @@ class CoreToolPort(PostgresToolPort):
                 self.resolve_flight(flight_id, flight_no, date))
         self.require("pairing", pairing_id)
         c = assess(self.world, crew_id, pairing_id, delay_h)
+        subject = self.world.crew[crew_id]
         return {
             "crew_id": crew_id,
+            "name": subject.name,
+            "rank": subject.rank,
             "pairing_id": pairing_id,
             "legal": c.legal,
             "rules_checked": list(rules.ALL_RULES),
@@ -273,6 +276,8 @@ class CoreToolPort(PostgresToolPort):
             "near_misses": [],
             "excluded": [
                 {"crew_id": c.crew_id,
+                 "name": world.crew[c.crew_id].name,
+                 "rank": world.crew[c.crew_id].rank,
                  "reason": "; ".join(v.detail for v in rules.blocking(c.verdicts)),
                  "rules": [v.rule_id for v in rules.blocking(c.verdicts)]}
                 for c in excluded
