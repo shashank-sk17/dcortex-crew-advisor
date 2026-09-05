@@ -33,6 +33,7 @@ class Dataset:
     scenarios: list[dict]
     questions: list[dict]
     held_out_scenarios: list[dict]
+    boarding_gates: list[dict]
 
 
 def load_dataset() -> Dataset:
@@ -50,4 +51,6 @@ def load_dataset() -> Dataset:
         scenarios=_load(d / "scenarios.json"),
         questions=_load(d / "questions.json"),
         held_out_scenarios=_load(config.INTERNAL_DIR / "held_out_scenarios.json"),
+        # Fabricated, not vendored -- see mock_data/README.md.
+        boarding_gates=_load(config.MOCK_DATA_DIR / "boarding_gate.json"),
     )

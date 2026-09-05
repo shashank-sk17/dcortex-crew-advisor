@@ -120,8 +120,17 @@ ASKS_IMPACT_RE = _p(
     r"\bimpact\b", r"\bknock[- ]?on\b", r"\bdownstream\b",
 )
 
+# Boarding-gate vocabulary. Checked before every disruption/legality rule so
+# "DX401 is delayed 90 minutes — does it still clear its gate?" routes to
+# CHECK_GATE rather than FIND_REPLACEMENT ("delayed" alone reads as a
+# disruption) or CHECK_LEGALITY ("exceed"/"limit" wording overlaps).
+GATE_RE = _p(r"\bgates?\b", r"\b[a-z]{3}-g\d+\b")
+
 
 RULES: tuple[Rule, ...] = (
+    # Gate questions first: distinctive vocabulary that would otherwise be
+    # caught by "delayed" (disruption) or "exceed"/"limit" (legality).
+    Rule(Intent.CHECK_GATE, GATE_RE, "gate"),
     # ---- tier 3 -----------------------------------------------------------
     Rule(
         # These phrasings are explicit enough to stand alone — "both captains
@@ -330,7 +339,7 @@ You classify crew-control questions. Reply with JSON only:
 
 Valid intents:
   Tier 1  LOOKUP_ROSTER LOOKUP_RESERVE LOOKUP_DUTY_CLOCK LOOKUP_CERT
-          LOOKUP_FLIGHT LOOKUP_CREW EXPLAIN_RULE
+          LOOKUP_FLIGHT LOOKUP_CREW EXPLAIN_RULE CHECK_GATE
   Tier 2  FIND_REPLACEMENT CHECK_LEGALITY IMPACT_OF_EVENT
   Tier 3  RANK_OPTIONS SIMULATE_WHATIF JOINT_PLAN RESOLVE_ILLEGAL
 

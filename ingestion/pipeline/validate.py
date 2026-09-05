@@ -44,6 +44,7 @@ def expected_counts(ds: Dataset) -> dict[str, int]:
         "roster_exceptions": len(ds.rosters["flagged_exceptions"]),
         "costs": 1,
         "risk_signals": len(ds.risk_signals),
+        "boarding_gates": len(ds.boarding_gates),
         "rules_vec": len(ds.rules["rules"]),
         "scenario_precedent_vec": len(ds.scenarios),
         "controller_note_vec": len(ds.rosters["flagged_exceptions"]),

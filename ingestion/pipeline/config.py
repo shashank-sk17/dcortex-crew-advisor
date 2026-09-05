@@ -11,6 +11,11 @@ DATA_DIR = DATASET_DIR / "data"
 INTERNAL_DIR = DATASET_DIR / "internal"
 SQL_DIR = Path(__file__).resolve().parents[1] / "sql"
 
+# Fabricated auxiliary data, kept separate from the vendored dataset above
+# (see mock_data/README.md) -- boarding-gate assignments have no vendored
+# source at all.
+MOCK_DATA_DIR = REPO_ROOT / "mock_data"
+
 EMBEDDING_DIM = 384
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 

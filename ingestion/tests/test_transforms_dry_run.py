@@ -35,6 +35,7 @@ def test_dataset_loads_and_has_expected_top_level_shape(ds):
     assert len(ds.scenarios) == 6
     assert len(ds.questions) == 38
     assert len(ds.held_out_scenarios) == 2
+    assert len(ds.boarding_gates) == 147
 
 
 # ---------------------------------------------------------------- postgres transforms: run without error + row counts
@@ -54,6 +55,7 @@ def test_dataset_loads_and_has_expected_top_level_shape(ds):
         (tp.pairing_crew_rows, "pairing_crew"),
         (tp.roster_exception_rows, "roster_exceptions"),
         (tp.risk_signal_rows, "risk_signals"),
+        (tp.boarding_gate_rows, "boarding_gates"),
     ],
 )
 def test_postgres_transform_row_count_matches_expected(ds, transform_fn, expected_key):
@@ -95,6 +97,19 @@ def test_certifications_reference_only_real_crew_ids(ds):
     real_crew_ids = {c["crew_id"] for c in ds.crew}
     for crew_id, cert_type, valid_from, valid_to in tp.certification_rows(ds):
         assert crew_id in real_crew_ids
+
+
+def test_boarding_gates_reference_only_real_flight_ids(ds):
+    real_flight_ids = {f["flight_id"] for f in ds.flights}
+    for flight_id, *_ in tp.boarding_gate_rows(ds):
+        assert flight_id in real_flight_ids, f"{flight_id} not in flights.json"
+
+
+def test_boarding_gates_cover_every_flight_exactly_once(ds):
+    real_flight_ids = {f["flight_id"] for f in ds.flights}
+    gate_flight_ids = [row[0] for row in tp.boarding_gate_rows(ds)]
+    assert len(gate_flight_ids) == len(set(gate_flight_ids)), "duplicate flight_id in boarding_gates"
+    assert set(gate_flight_ids) == real_flight_ids
 
 
 # ---------------------------------------------------------------- vector transforms: run without error + content checks
@@ -160,7 +175,7 @@ def test_intent_example_q02_is_the_duty02_canary(ds):
 def test_ddl_files_parse_as_valid_postgres_syntax():
     import pglast
 
-    for filename in ("001_schema_postgres.sql", "002_schema_vector.sql"):
+    for filename in ("001_schema_postgres.sql", "002_schema_vector.sql", "003_schema_boarding_gates.sql"):
         sql = (config.SQL_DIR / filename).read_text(encoding="utf-8")
         stmts = pglast.parse_sql(sql)  # raises on syntax error
         assert len(stmts) > 0

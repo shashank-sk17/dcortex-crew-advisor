@@ -167,6 +167,22 @@ def load_risk_signals(conn: psycopg.Connection, ds: Dataset) -> int:
     return _exec(conn, sql, tp.risk_signal_rows(ds))
 
 
+def load_boarding_gates(conn: psycopg.Connection, ds: Dataset) -> int:
+    sql = """
+        INSERT INTO boarding_gates (flight_id, boarding_gate_number, pairing_id,
+                                     date, boarding_start_time, boarding_end_time,
+                                     aircraft_type)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (flight_id) DO UPDATE SET
+            boarding_gate_number = EXCLUDED.boarding_gate_number,
+            pairing_id = EXCLUDED.pairing_id, date = EXCLUDED.date,
+            boarding_start_time = EXCLUDED.boarding_start_time,
+            boarding_end_time = EXCLUDED.boarding_end_time,
+            aircraft_type = EXCLUDED.aircraft_type
+    """
+    return _exec(conn, sql, tp.boarding_gate_rows(ds))
+
+
 def load_all(conn: psycopg.Connection, ds: Dataset) -> dict[str, int]:
     """FK-respecting order: crew and flights and pairings first, then rows
     that reference them."""
@@ -184,5 +200,6 @@ def load_all(conn: psycopg.Connection, ds: Dataset) -> dict[str, int]:
     counts["roster_exceptions"] = load_roster_exceptions(conn, ds)
     counts["costs"] = load_costs(conn, ds)
     counts["risk_signals"] = load_risk_signals(conn, ds)
+    counts["boarding_gates"] = load_boarding_gates(conn, ds)
     conn.commit()
     return counts

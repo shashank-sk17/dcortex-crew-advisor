@@ -63,7 +63,7 @@ def main() -> int:
 
     try:
         if args.schema:
-            print("Applying schema (001_schema_postgres.sql, 002_schema_vector.sql) ...")
+            print(f"Applying schema ({', '.join(db.SCHEMA_FILES)}) ...")
             db.apply_schema(conn)
             print("  schema OK")
 

@@ -13,12 +13,15 @@ from __future__ import annotations
 import itertools
 from collections import Counter
 from dataclasses import asdict
+from datetime import timedelta
 from typing import Any
 
+from agent import config
 from agent.tools import ToolError
 from agent.tools_postgres import PostgresToolPort
 from core import rules
 from core.engine import Candidate, World, assess, drop_stage, load_world
+from core.gates import GateWorld, iso, load_gates, next_at_gate, occupant_at, parse
 from core.resolve import Resolution, resolve
 
 FUNNEL_ORDER = ("considered", "qualified", "certified", "in position",
@@ -31,12 +34,19 @@ class CoreToolPort(PostgresToolPort):
     def __init__(self, url: str | None = None) -> None:
         super().__init__(url)
         self._world: World | None = None
+        self._gates: GateWorld | None = None
 
     @property
     def world(self) -> World:
         if self._world is None:
             self._world = load_world(self)
         return self._world
+
+    @property
+    def gates(self) -> GateWorld:
+        if self._gates is None:
+            self._gates = load_gates(self)
+        return self._gates
 
     # -- entity resolution -------------------------------------------------
 
@@ -122,6 +132,75 @@ class CoreToolPort(PostgresToolPort):
             "AMBIGUOUS_QUERY",
             f"{flight_no} operates on {flew}. Which date do you mean? "
             f"Each is a different pairing, so the answer differs.")
+
+    # -- boarding gate ------------------------------------------------------
+
+    def check_gate(self, flight_id: str | None = None, flight_no: str | None = None,
+                   date: str | None = None, boarding_gate_number: str | None = None,
+                   delay_minutes: float = 0.0, at_utc: str | None = None) -> dict[str, Any]:
+        gates = self.gates
+
+        # No flight named: a pure occupancy question -- "is BLR-G1 blocked
+        # right now / at this instant". Free ends up meaning no aircraft
+        # holds the gate in that instant, not that nothing operates through it.
+        if not flight_id and not flight_no and boarding_gate_number:
+            if boarding_gate_number not in gates.by_gate:
+                raise ToolError(
+                    "UNRESOLVED_ENTITY",
+                    f"there is no boarding gate {boarding_gate_number!r}. "
+                    f"Known gates: {', '.join(sorted(gates.by_gate))}")
+            instant = parse(at_utc) if at_utc else parse(config.SNAPSHOT_UTC)
+            occupant = occupant_at(gates, boarding_gate_number, instant)
+            return {
+                "boarding_gate_number": boarding_gate_number,
+                "checked_at_utc": at_utc or config.SNAPSHOT_UTC,
+                "occupied": occupant is not None,
+                "occupying_flight_id": occupant["flight_id"] if occupant else None,
+                "occupying_pairing_id": occupant["pairing_id"] if occupant else None,
+                "occupied_from": occupant["boarding_start_time"] if occupant else None,
+                "occupied_until": occupant["boarding_end_time"] if occupant else None,
+            }
+
+        # Named by flight. resolve_flight already reports a wrong date by
+        # naming the dates the flight actually operates on -- exactly the
+        # "correct gate, wrong date" case, so nothing extra is needed for it.
+        fid = self.resolve_flight(flight_id, flight_no, date)
+        record = gates.by_flight.get(fid)
+        if record is None:
+            raise ToolError("UNRESOLVED_ENTITY",
+                            f"{fid} has no boarding-gate record in the mock dataset")
+
+        actual_gate = record["boarding_gate_number"]
+        end = parse(record["boarding_end_time"])
+        if delay_minutes:
+            end += timedelta(minutes=delay_minutes)
+
+        conflict = None
+        if delay_minutes:
+            nxt = next_at_gate(gates, actual_gate, fid)
+            if nxt is not None:
+                nxt_start = parse(nxt["boarding_start_time"])
+                if end > nxt_start:
+                    conflict = {
+                        "flight_id": nxt["flight_id"],
+                        "pairing_id": nxt["pairing_id"],
+                        "its_boarding_start_time": nxt["boarding_start_time"],
+                        "overlap_minutes": round((end - nxt_start).total_seconds() / 60, 1),
+                    }
+
+        return {
+            "flight_id": fid,
+            "pairing_id": record["pairing_id"],
+            "date": record["date"],
+            "actual_boarding_gate_number": actual_gate,
+            "claimed_boarding_gate_number": boarding_gate_number,
+            "gate_match": boarding_gate_number is None or boarding_gate_number == actual_gate,
+            "boarding_start_time": record["boarding_start_time"],
+            "boarding_end_time": record["boarding_end_time"],
+            "delay_minutes": delay_minutes,
+            "delayed_boarding_end_time": iso(end) if delay_minutes else None,
+            "gate_conflict": conflict,
+        }
 
     def check_legality(self, crew_id: str, pairing_id: str | None = None,
                        flight_id: str | None = None, flight_no: str | None = None,

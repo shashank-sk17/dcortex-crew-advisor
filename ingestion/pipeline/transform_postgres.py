@@ -136,3 +136,18 @@ def risk_signal_rows(ds: Dataset) -> list[tuple]:
         (r["crew_id"], r["as_of_utc"], r["disruption_risk_score"], r["drivers"])
         for r in ds.risk_signals
     ]
+
+
+def boarding_gate_rows(ds: Dataset) -> list[tuple]:
+    return [
+        (
+            g["flight_id"],
+            g["boarding_gate_number"],
+            g["pairing_id"],
+            g["date"],
+            g["boarding_start_time"],
+            g["boarding_end_time"],
+            g["aircraft_type"],
+        )
+        for g in ds.boarding_gates
+    ]

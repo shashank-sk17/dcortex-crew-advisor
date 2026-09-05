@@ -16,10 +16,17 @@ def register_vector_type(conn: psycopg.Connection) -> None:
     register_vector(conn)
 
 
+SCHEMA_FILES = (
+    "001_schema_postgres.sql",
+    "002_schema_vector.sql",
+    "003_schema_boarding_gates.sql",
+)
+
+
 def apply_schema(conn: psycopg.Connection) -> None:
-    """Applies both DDL files, in order. Idempotent -- every statement in
+    """Applies every DDL file, in order. Idempotent -- every statement in
     them is CREATE ... IF NOT EXISTS / CREATE EXTENSION IF NOT EXISTS."""
-    for filename in ("001_schema_postgres.sql", "002_schema_vector.sql"):
+    for filename in SCHEMA_FILES:
         sql = (config.SQL_DIR / filename).read_text(encoding="utf-8")
         with conn.cursor() as cur:
             cur.execute(sql)
