@@ -95,7 +95,14 @@ class RuleVerdict:
 
     @property
     def failed(self) -> bool:
-        return self.status is Verdict.FAIL
+        """Compare by value, not identity.
+
+        Verdicts cross the tool boundary as JSON, so `status` arrives as the
+        string "FAIL" rather than the enum member. `is` returns False for
+        that, which reported a breaching assignment as legal — the single
+        most dangerous way this system can be wrong.
+        """
+        return str(self.status) == str(Verdict.FAIL)
 
 
 @dataclass(slots=True)
@@ -192,6 +199,12 @@ class ReplacementAnswer:
     options: list[Option] = field(default_factory=list)
     near_misses: list[Option] = field(default_factory=list)
     excluded: list[dict[str, Any]] = field(default_factory=list)
+
+    # A direct legality question — "if C-2087 covers P-2291, does anything
+    # breach?" — answers with verdicts rather than candidates.
+    subject: str | None = None
+    legal: bool | None = None
+    verdicts: list[RuleVerdict] = field(default_factory=list)
 
 
 @dataclass(slots=True)

@@ -83,6 +83,21 @@ class Exchange:
         return list(getattr(body, "excluded", []) or [])
 
     @property
+    def pending_detail(self) -> str | None:
+        """A detail the last turn asked for and could not proceed without.
+
+        "DX412 operates on three dates, which do you mean?" is a question. If
+        the next turn supplies one and nothing carries it back to the original
+        query, the controller answers into a void — the same hole confirmation
+        had.
+        """
+        for entry in self.response.trace:
+            if entry.error and entry.error.startswith("AMBIGUOUS_QUERY"):
+                if "date" in entry.error.lower():
+                    return "date"
+        return None
+
+    @property
     def pending_confirmation(self) -> str | None:
         """The id we asked the controller to confirm, if we asked."""
         for entry in self.response.trace:
@@ -268,7 +283,14 @@ class Conversation:
                     "Understood — not that one. Give me the correct id and I "
                     "will run it.", prior))
 
-        # 2. Follow-ups the previous turn already answered.
+        # 2. Supplying a detail the previous turn asked for. Re-run the
+        #    original question with it rather than treating the fragment as a
+        #    new query — "on 2026-09-15" alone means nothing.
+        if prior is not None and prior.pending_detail == "date" and ents.dates:
+            resumed = f"{prior.query} on {ents.dates[0]}"
+            return self._record(resumed, self._advisor.ask(resumed))
+
+        # 3. Follow-ups the previous turn already answered.
         if prior is not None:
             target = ents.crew_ids[0] if ents.crew_ids else None
 
@@ -280,7 +302,7 @@ class Conversation:
                 if answer := self._answer_decision(target):
                     return self._record(query, answer)
 
-        # 3. A new question, with whatever this turn left implicit filled in.
+        # 4. A new question, with whatever this turn left implicit filled in.
         query_for_agent = query
         if prior is not None and (WHAT_ABOUT_RE.search(query)
                                   or ANAPHORA_RE.search(query)

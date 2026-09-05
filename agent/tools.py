@@ -74,7 +74,8 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "name": "check_legality",
         "description": (
-            "Evaluate all 7 rules for assigning a crew member to a pairing. "
+            "Evaluate all 7 rules for assigning a crew member to a pairing, "
+            "named directly or via a flight on it. "
             "Returns a verdict per rule with the numbers, never a bare boolean. "
             "This is the only legal authority in the system."
         ),
@@ -83,12 +84,25 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "properties": {
                 "crew_id": {"type": "string", "pattern": "^C-[0-9]{4}$"},
                 "pairing_id": {"type": "string", "pattern": "^P-[0-9]{4}$"},
+                "flight_id": {
+                    "type": "string",
+                    "pattern": "^DX[0-9]{3}-[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "description": "Alternative to pairing_id; its pairing is resolved.",
+                },
+                "flight_no": {
+                    "type": "string", "pattern": "^DX[0-9]{3}$",
+                    "description": (
+                        "A flight number without a date is ambiguous — DX412 "
+                        "flies on three days — so pass `date` alongside it."
+                    ),
+                },
+                "date": {"type": "string", "description": "ISO date, with flight_no"},
                 "delay_h": {
                     "type": "number",
                     "description": "Hypothetical departure delay, for near-miss checks",
                 },
             },
-            "required": ["crew_id", "pairing_id"],
+            "required": ["crew_id"],
         },
     },
     {

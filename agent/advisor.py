@@ -31,8 +31,10 @@ from agent.schemas import (
     LookupAnswer,
     Option,
     ReplacementAnswer,
+    RuleVerdict,
     Tier,
     TraceEntry,
+    Verdict,
 )
 from agent.tools import TOOL_SCHEMAS, PlaceholderToolPort, ToolPort, dispatch, schemas_for_port
 
@@ -287,7 +289,12 @@ def _coerce(cls: Any, rows: Any) -> list[Any]:
         if isinstance(row, cls):
             out.append(row)
         elif isinstance(row, dict):
-            out.append(cls(**{k: v for k, v in row.items() if k in fields}))
+            kwargs = {k: v for k, v in row.items() if k in fields}
+            if cls is RuleVerdict and "status" in kwargs:
+                # JSON gives us the string; rebuild the enum so identity
+                # comparisons elsewhere cannot silently misread it.
+                kwargs["status"] = Verdict(str(kwargs["status"]))
+            out.append(cls(**kwargs))
     return out
 
 
@@ -321,8 +328,15 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
     if route.tier is Tier.REPLACEMENT:
         found = results.get("find_options") or {}
         rippled = results.get("ripple") or {}
+        # A legality verdict is a complete answer on its own. Reading only
+        # find_options and ripple discarded it silently, so "does any rule
+        # breach?" computed the right verdict and then reported nothing.
+        checked = results.get("check_legality") or {}
         rec = _coerce(Option, [found["recommended"]]) if found.get("recommended") else []
         return ReplacementAnswer(
+            subject=checked.get("crew_id"),
+            legal=checked.get("legal"),
+            verdicts=_coerce(RuleVerdict, checked.get("verdicts")),
             recommended=rec[0] if rec else None,
             cancellation_multiple=found.get("cancellation_multiple", 0),
             next_tier_cost_inr=found.get("next_tier_cost_inr", 0),
