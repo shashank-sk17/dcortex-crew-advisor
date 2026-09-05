@@ -1121,3 +1121,41 @@ class TestDataCoverage:
                  (ln.strip() and set(ln.strip()) <= {"─", " "})]
         assert len(rules) == 2, "shapes merged into one ragged table"
         assert "crew_id  role" in out and "date" in out
+
+
+class TestOneNamingRule:
+    """How a person is written is a property of the system, not something
+    asked for per call. One wording, three prompts."""
+
+    def test_the_rule_is_in_the_system_prompt(self):
+        from agent.prompts import system_prompt
+
+        assert "Rank Name (C-XXXX)" in system_prompt()
+
+    def test_both_explainer_passes_quote_it_rather_than_restate_it(self):
+        from agent import explainer
+        from agent.prompts import naming_rule
+
+        rule = naming_rule()
+        assert rule
+        assert rule in explainer.LOOKUP_INSTRUCTIONS
+        assert rule in explainer.POLISH_INSTRUCTIONS
+
+    def test_editing_system_md_changes_every_prompt(self):
+        """If these could drift, two of them would eventually be wrong."""
+        from agent import explainer
+        from agent.prompts import naming_rule, system_prompt
+
+        rule = naming_rule()
+        assert rule in system_prompt()
+        assert sum(rule in text for text in (
+            system_prompt(), explainer.LOOKUP_INSTRUCTIONS,
+            explainer.POLISH_INSTRUCTIONS)) == 3
+
+    def test_the_rule_covers_both_halves_and_the_fallback(self):
+        from agent.prompts import naming_rule
+
+        rule = naming_rule()
+        assert "bare id" in rule, "must say why an id alone is not an answer"
+        assert "never invent" in rule.lower(), "must forbid inventing a name"
+        assert "gender" in rule

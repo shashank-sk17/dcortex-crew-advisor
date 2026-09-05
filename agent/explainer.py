@@ -17,7 +17,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Any
 
-from agent import config
+from agent import config, prompts
 from agent.llm import LLM
 from agent.schemas import (
     AdvisorResponse,
@@ -483,7 +483,12 @@ def collect_citations(response: AdvisorResponse) -> list[Citation]:
 # Optional model pass
 # --------------------------------------------------------------------------
 
-LOOKUP_INSTRUCTIONS = """\
+# Both passes below append `prompts.naming_rule()` rather than restating it.
+# How a person is written is one rule for the whole system — it lives in
+# `prompts/system.md`, the tool-loop model reads it there, and these two get
+# the same words so the three cannot drift apart.
+
+_LOOKUP_INSTRUCTIONS = """\
 You are answering an airline crew controller's factual question.
 
 Below is a question and the rows the tools returned for it. Answer the
@@ -497,34 +502,32 @@ Rules, in order of importance:
 2. Do NOT recommend anything, do NOT infer a situation, do NOT describe a
    problem. Nothing here is a disruption; it is a record. "Reduce their duty
    hours" is not an answer to "who is this".
-3. Name every crew member as `Rank Name (C-XXXX)` the first time they appear
-   — "Captain A. Nair (C-1042)" — and by name after that. Never a bare id: a
-   controller phones a person. Never a name without the id somewhere: the id
-   is what goes into the roster system.
-4. Do not assign a gender. The records hold an initial and a surname and
-   nothing else, so write the name, the rank, or "they".
-5. Lead with what was asked. Mention what a controller would want next only
+3. Name people exactly as the rule at the end of this message says.
+4. Lead with what was asked. Mention what a controller would want next only
    if it is in the rows — current pairing, duty headroom, anything expiring.
-6. No preamble, no "based on the data provided". Two to five sentences.
+5. No preamble, no "based on the data provided". Two to five sentences.
 """
 
 
-POLISH_INSTRUCTIONS = """\
+_POLISH_INSTRUCTIONS = """\
 You are writing for an airline crew controller under time pressure.
 
 Rewrite the structured summary below as you would say it to them: lead with
 the recommendation, then why, then what it costs and what it breaks. Cite rule
 ids inline where they decided something.
 
-Name every crew member as `Rank Name (C-XXXX)` the first time they appear —
-"Captain A. Nair (C-1042)" — and by name after that. Never a bare id, and
-never a name without its id somewhere. Do not assign a gender: the records
-hold an initial and a surname, so use the name, the rank, or "they".
-
 Absolute constraint: you may reword, reorder and compress. You may NOT add any
 identifier, number, name or claim that is not already present. If something is
 missing, leave it missing — a verifier will reject this answer otherwise.
 """
+
+
+def _with_naming(instructions: str) -> str:
+    return f"{instructions.rstrip()}\n\n{prompts.naming_rule()}\n"
+
+
+LOOKUP_INSTRUCTIONS = _with_naming(_LOOKUP_INSTRUCTIONS)
+POLISH_INSTRUCTIONS = _with_naming(_POLISH_INSTRUCTIONS)
 
 
 def polish(response: AdvisorResponse, llm: LLM | None = None) -> str:
