@@ -21,6 +21,7 @@ from agent import config
 from agent.llm import LLM
 from agent.schemas import (
     AdvisorResponse,
+    Intent,
     Citation,
     ConsequenceAnswer,
     LookupAnswer,
@@ -466,6 +467,28 @@ def collect_citations(response: AdvisorResponse) -> list[Citation]:
 # Optional model pass
 # --------------------------------------------------------------------------
 
+LOOKUP_INSTRUCTIONS = """\
+You are answering an airline crew controller's factual question.
+
+Below is a question and the rows the tools returned for it. Answer the
+question in one short paragraph, in plain language, using only those rows.
+
+Rules, in order of importance:
+
+1. Every name, id, number, date and status you write must appear in the rows.
+   Invent nothing. If the rows do not answer part of the question, say that
+   part is not in the data.
+2. Do NOT recommend anything, do NOT infer a situation, do NOT describe a
+   problem. Nothing here is a disruption; it is a record. "Reduce their duty
+   hours" is not an answer to "who is this".
+3. Do not assign a gender. The records hold an initial and a surname and
+   nothing else, so write the name, the rank, or "they".
+4. Lead with what was asked. Mention what a controller would want next only
+   if it is in the rows — current pairing, duty headroom, anything expiring.
+5. No preamble, no "based on the data provided". Two to five sentences.
+"""
+
+
 POLISH_INSTRUCTIONS = """\
 You are writing for an airline crew controller under time pressure.
 
@@ -485,17 +508,49 @@ def polish(response: AdvisorResponse, llm: LLM | None = None) -> str:
     Falls back to the template verbatim when no model is configured, which is
     the current default — the placeholder client returns no usable prose.
 
-    **Tier 1 is never polished.** A lookup answer is already complete and
-    correct; there is no trade-off to explain, so the model can only add risk.
-    Asked "what does RULE-DUTY-02 say?", llama3.1:8b produced "Recommendation:
-    reduce the crew's duty hours — the crew has exceeded the maximum allowed"
-    — an entire fabricated situation, with no crew and nothing exceeded. The
-    verifier passed it, because the invention was narrative rather than
-    numeric and cited nothing checkable. See agent/README.md §6.
+    Tier 1 gets its own instructions rather than the recommendation ones, and
+    keeps its tables underneath the prose.
+
+    It used to get no model pass at all. That was right when a lookup meant
+    one small table and the model was llama3.1:8b — asked "what does
+    RULE-DUTY-02 say?" it produced "Recommendation: reduce the crew's duty
+    hours — the crew has exceeded the maximum allowed", an entire fabricated
+    situation with no crew and nothing exceeded, and the verifier passed it
+    because the invention was narrative rather than numeric.
+
+    What changed is the question. "Who is C-1042" now fans out to nine tool
+    calls across seven entities, and the template answers it with "16
+    records." followed by seven tables — every fact present and the question
+    unanswered. A controller cannot read that at 05:00.
+
+    So the ban is replaced by four narrower defences, because the risk it was
+    guarding against is real: LOOKUP_INSTRUCTIONS forbids recommending or
+    inferring a situation, the tables stay below the prose as evidence, an
+    answer carrying no rows is still never polished, and EXPLAIN_RULE — the
+    shape that produced that fabrication — is still never polished either.
     """
     template = render(response)
-    if llm is None or isinstance(response.answer, LookupAnswer):
+    if llm is None:
         return template
+
+    if isinstance(response.answer, LookupAnswer):
+        # Two lookups still get no model pass. An empty one has only the
+        # tools' own error text to offer, and EXPLAIN_RULE is the exact shape
+        # that produced the llama3.1 fabrication above: the rule text *is* the
+        # answer, so summarising it can only drift from the regulation.
+        if not response.answer.rows or response.intent is Intent.EXPLAIN_RULE:
+            return template
+        result = llm.complete(
+            system=LOOKUP_INSTRUCTIONS,
+            messages=[{"role": "user", "content":
+                       f"Question: {response.query}\n\n{template}"}],
+            model=config.EXPLAINER_MODEL,
+            max_tokens=512,
+        )
+        text = (result.text or "").strip()
+        if not text or text.startswith("[placeholder]"):
+            return template
+        return f"{text}\n\n{template}"
 
     # Never paraphrase a tool failure. The error text is already written for a
     # controller and often carries the only actionable content — "there is no

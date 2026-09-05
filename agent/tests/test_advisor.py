@@ -229,21 +229,69 @@ class TestToolLoopDeduplication:
         assert len(llm.calls) < 5, "should break out, not burn the iteration cap"
 
 
-class TestLookupIsNeverPolished:
-    def test_lookup_uses_the_template_verbatim(self):
+class TestLookupPolish:
+    """Tier 1 gets a model pass, but only where it cannot invent a situation."""
+
+    def _liar(self):
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        return PlaceholderLLM(
+            [LLMResponse(text="The crew has exceeded its duty limits.")])
+
+    def _response(self, intent, rows):
+        from agent.schemas import AdvisorResponse, LookupAnswer, Tier
+
+        return AdvisorResponse(tier=Tier.LOOKUP, intent=intent, query="q",
+                               answer=LookupAnswer(rows=rows))
+
+    def test_rule_text_is_never_polished(self):
         """llama3.1:8b answered "what does RULE-DUTY-02 say?" with an invented
         situation — a crew that had exceeded its limits. Nothing existed to
         exceed anything. The verifier passed it because the fabrication was
-        narrative, not numeric."""
+        narrative, not numeric. The rule text is the answer; summarising it
+        can only drift from the regulation."""
         from agent import explainer
-        from agent.llm import LLMResponse, PlaceholderLLM
-        from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier
 
-        liar = PlaceholderLLM([LLMResponse(text="The crew has exceeded its duty limits.")])
-        resp = AdvisorResponse(tier=Tier.LOOKUP, intent=Intent.EXPLAIN_RULE,
-                               answer=LookupAnswer(rows=[{"rule_id": "RULE-DUTY-02"}]))
+        liar = self._liar()
+        resp = self._response(Intent.EXPLAIN_RULE, [{"rule_id": "RULE-DUTY-02"}])
         assert explainer.polish(resp, liar) == explainer.render(resp)
         assert llm_unused(liar)
+
+    def test_an_empty_lookup_is_never_polished(self):
+        """With no rows the only thing to say is what went wrong, and that is
+        the tools' own words."""
+        from agent import explainer
+
+        liar = self._liar()
+        resp = self._response(Intent.LOOKUP_CREW, [])
+        assert explainer.polish(resp, liar) == explainer.render(resp)
+        assert llm_unused(liar)
+
+    def test_a_data_lookup_is_answered_in_prose_over_its_evidence(self):
+        """"Who is C-1042" fanned out to nine calls across seven entities and
+        the template answered "16 records." followed by seven tables. Every
+        fact present, the question unanswered."""
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        llm = PlaceholderLLM([LLMResponse(text="C-1042 is Captain A. Nair.")])
+        resp = self._response(Intent.LOOKUP_CREW,
+                              [{"crew_id": "C-1042", "name": "A. Nair"}])
+        out = explainer.polish(resp, llm)
+        assert out.startswith("C-1042 is Captain A. Nair.")
+        assert "A. Nair" in out and llm.calls, "tables dropped, or model unused"
+        assert explainer.render(resp) in out, "evidence must survive beneath it"
+
+    def test_the_question_reaches_the_model(self):
+        """A lookup answer is only judgeable against what was asked."""
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        llm = PlaceholderLLM([LLMResponse(text="ok")])
+        resp = self._response(Intent.LOOKUP_CREW, [{"crew_id": "C-1042"}])
+        resp.query = "who is C-1042"
+        explainer.polish(resp, llm)
+        assert "who is C-1042" in llm.calls[0]["messages"][0]["content"]
 
 
 def llm_unused(llm) -> bool:

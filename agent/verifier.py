@@ -36,7 +36,51 @@ NUMBER_RE = re.compile(r"(?<![\w.])(?:₹\s*)?(\d[\d,]*(?:\.\d+)?)(?![\w])")
 # three numbers — checking 2026-09-15 as "2026" + "09" + "15" both floods the
 # ledger and lets a wrong date pass on the strength of its year.
 DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-CLOCK_RE = re.compile(r"\b\d{1,2}:\d{2}Z?\b")
+
+# A whole ISO timestamp, matched before anything looks for a time inside it.
+# It has to come out first: `2026-09-15T06:00:00+00:00` contains the report
+# time *and* a UTC offset, and a pattern loose enough to see `06:00` through
+# the `T` also reads `+00:00` as midnight. Pulling the timestamp out whole
+# leaves one unambiguous time and no phantom.
+ISO_DT_RE = re.compile(
+    r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?"
+    r"(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?"
+)
+
+# A time of day, once timestamps are out of the way. `\b` cannot open this:
+# a bare time may be preceded by `-` in a range like `06:00-18:00`.
+CLOCK_RE = re.compile(r"(?<![\d:])\d{1,2}:\d{2}(?::\d{2})?Z?(?![\d:])")
+
+def times_and_rest(text: str) -> tuple[list[str], str]:
+    """Times of day named by any timestamps, and the text with them removed.
+
+    Used on both sides of the gate so a report time is one fact whichever way
+    it is written — Postgres hands back `2026-09-15T06:00:00+00:00`, a
+    controller reads `06:00Z`, and the model turning one into the other is
+    doing its job rather than inventing something.
+    """
+    found: list[str] = []
+    for match in ISO_DT_RE.findall(text):
+        stamp = match.split("T")[-1].split(" ")[-1]
+        if norm := normalise_clock(stamp):
+            found.append(norm)
+    return found, ISO_DT_RE.sub(" ", text)
+
+
+def normalise_clock(value: str) -> str | None:
+    """`6:00`, `06:00Z`, `06:00:00+00:00` -> `06:00`. Anything else -> None.
+
+    Seconds are dropped because no report or release time in this dataset
+    carries them, and a trailing `:00` is a formatting artefact rather than a
+    claim about the world.
+    """
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?",
+                         value.strip())
+    if not match:
+        return None
+    hour, minute = int(match.group(1)), match.group(2)
+    return f"{hour:02d}:{minute}" if hour < 24 else None
+
 
 ID_PATTERNS = (
     CREW_RE, PAIRING_RE, FLIGHT_ID_RE, FLIGHT_NO_RE, RULE_RE, AIRCRAFT_RE,
@@ -156,7 +200,15 @@ class Evidence:
     numbers: list[tuple[float, str]] = field(default_factory=list)
 
     def has_identifier(self, value: str) -> str | None:
-        return self.identifiers.get(value)
+        if found := self.identifiers.get(value):
+            return found
+        # A time is the one identifier with several correct spellings.
+        # `06:00Z` is what a controller reads and `2026-09-15T06:00:00+00:00`
+        # is what Postgres returns; the model reformatting one into the other
+        # is doing its job, not inventing anything. Compare on the value.
+        if norm := normalise_clock(value):
+            return self.identifiers.get(norm)
+        return None
 
     def has_number(self, value: float) -> str | None:
         for known, tool in self.numbers:
@@ -233,12 +285,28 @@ def build_evidence(trace: Iterable[TraceEntry]) -> Evidence:
                 if isinstance(scalar, (int, float, Decimal)):
                     evidence.numbers.append((float(scalar), entry.tool))
                     continue
+                # Postgres hands back `datetime`, `date` and `time` objects,
+                # not strings. Skipping them meant a report time was in the
+                # trace, printed in the table, and still not evidence — so
+                # every polished answer that mentioned one was rejected and
+                # thrown away. Index them as a controller would write them.
+                if isinstance(scalar, (dt.datetime, dt.date, dt.time)):
+                    scalar = scalar.isoformat()
                 if not isinstance(scalar, str):
                     continue
 
+                stamped, rest = times_and_rest(scalar)
+                for hhmm in stamped:
+                    evidence.identifiers.setdefault(hhmm, entry.tool)
+
                 for pattern in ID_PATTERNS:
-                    for match in pattern.findall(scalar):
+                    for match in pattern.findall(scalar if pattern is not CLOCK_RE
+                                                 else rest):
                         evidence.identifiers.setdefault(match, entry.tool)
+                        # The normalised form too, so one instant is one fact
+                        # however either side chooses to spell it.
+                        if norm := normalise_clock(match):
+                            evidence.identifiers.setdefault(norm, entry.tool)
 
                 # Numbers embedded in prose fields, e.g. a rule's detail string.
                 for num in _numbers_in(scalar):
@@ -257,8 +325,9 @@ def extract_claims(narrative: str) -> list[Claim]:
     claims: list[Claim] = []
     seen: set[tuple[str, str]] = set()
 
+    stamped, rest = times_and_rest(narrative)
     for pattern in ID_PATTERNS:
-        for value in pattern.findall(narrative):
+        for value in pattern.findall(narrative if pattern is not CLOCK_RE else rest):
             key = ("identifier", value)
             if key not in seen:
                 seen.add(key)

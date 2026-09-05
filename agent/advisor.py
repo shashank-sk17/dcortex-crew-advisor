@@ -619,6 +619,7 @@ class Advisor:
         response = AdvisorResponse(
             tier=turn.route.tier,
             intent=turn.route.intent,
+            query=turn.query,
             entities=turn.route.entities.to_dict(),
             answer=build_answer(turn.route, turn.trace),
             confidence=confidence,
@@ -703,6 +704,7 @@ class Advisor:
         response = AdvisorResponse(
             tier=turn.route.tier,
             intent=turn.route.intent,
+            query=turn.query,
             entities=turn.route.entities.to_dict(),
             answer=build_answer(turn.route, turn.trace),
             trace=turn.trace,

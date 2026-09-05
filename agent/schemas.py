@@ -252,6 +252,9 @@ class AdvisorResponse:
 
     tier: Tier
     intent: Intent
+    query: str = ""
+    """The controller's own words. A lookup answer is only judgeable against
+    the question that was asked — "16 records" answers nothing on its own."""
     entities: dict[str, Any] = field(default_factory=dict)
     answer: AnswerBody | None = None
     narrative: str = ""
