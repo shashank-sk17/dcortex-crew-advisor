@@ -1,0 +1,24 @@
+@if (store.isEmpty()) {
+  <div class="empty">
+    <h2>Crew Ops Advisor</h2>
+    <p class="muted">
+      Ask in plain English. Every number, name and verdict comes from a deterministic
+      tool call — the model only chooses tools and narrates.
+    </p>
+    <div class="seeds">
+      @for (s of seeds; track s) {
+        <button class="seed" (click)="store.ask(s)">{{ s }}</button>
+      }
+    </div>
+  </div>
+} @else {
+  <div class="thread">
+    @for (t of store.turns(); track t.id) {
+      @if (t.role === 'user') {
+        <div class="user"><span class="user__badge">controller</span>{{ asUser(t).text }}</div>
+      } @else {
+        <app-assistant-turn [turn]="asAssistant(t)" />
+      }
+    }
+  </div>
+}

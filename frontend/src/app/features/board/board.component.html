@@ -1,0 +1,90 @@
+<div class="board">
+  <div class="board__bar">
+    <h2>Flights · {{ state.date() }}</h2>
+    <div class="filters">
+      @for (r of ranks; track r) {
+        <button class="pill" [attr.data-rank]="r" [class.on]="rankFilter() === r"
+                (click)="toggleRank(r)">{{ r }}</button>
+      }
+      <span class="muted">{{ rows().length }} shown</span>
+    </div>
+  </div>
+
+  <div class="tbl">
+    <div class="tr th">
+      <span>rank</span><span>flight</span><span>route</span><span>dep→arr (UTC)</span>
+      <span>tail</span><span>slack</span><span>down</span>
+    </div>
+    @for (f of rows(); track f.flight_id) {
+      <button class="tr" [class.sel]="selectedId() === f.flight_id"
+              [attr.data-rank]="f.delay_rank" (click)="select(f)">
+        <span class="dot" [attr.data-rank]="f.delay_rank" [title]="f.delay_rank_reasons.join('; ')"></span>
+        <span class="mono">{{ f.flight_no }}</span>
+        <span>{{ f.dep_station }}→{{ f.arr_station }}</span>
+        <span class="mono sm">{{ f.dep_utc | date: 'HH:mm' : 'UTC' }}–{{ f.arr_utc | date: 'HH:mm' : 'UTC' }}</span>
+        <span class="mono sm">{{ f.aircraft }}</span>
+        <span class="mono sm" [class.tight]="f.slack_minutes != null && f.slack_minutes < 45">
+          {{ f.slack_minutes == null ? '—' : f.slack_minutes + 'm' }}
+        </span>
+        <span class="mono sm">{{ f.downstream_count }}</span>
+      </button>
+    }
+  </div>
+</div>
+
+@if (detail(); as d) {
+  <app-modal [label]="d.flight_no + ' details'" (closed)="close()">
+    <div class="drawer">
+      <div class="drawer__head">
+        <div class="drawer__title">{{ d.flight_no }}</div>
+        <div class="drawer__route">{{ d.dep_station }} <span class="drawer__arrow">→</span> {{ d.arr_station }}</div>
+        <div class="muted sm">{{ d.aircraft }} {{ d.aircraft_type }} · {{ d.seats }} seats · pairing {{ d.pairing_id ?? '—' }}</div>
+      </div>
+
+      <div class="rankbox card" [attr.data-rank]="d.delay_rank">
+        <b>{{ d.delay_rank }}</b> delay rank · score {{ d.delay_rank_score }}
+        <ul>@for (r of d.delay_rank_reasons; track r) { <li>{{ r }}</li> }</ul>
+      </div>
+
+      <div class="sect card">
+        <div class="sect__t">Operating crew</div>
+        @for (c of d.crew; track c.crew_id) {
+          <div class="crewline"><span class="mono">{{ c.crew_id }}</span> {{ c.name }} · {{ c.role }}</div>
+        }
+        @for (p of d.operating_crew_pressure; track p.crew_id) {
+          <div class="press" [class.bad]="p.status === 'FAIL'">
+            <span class="mono">{{ p.crew_id }}</span> {{ p.rule_id }} headroom {{ p.headroom | number: '1.1-2' }}h
+          </div>
+        }
+      </div>
+
+      <div class="sect card">
+        <div class="sect__t">Downstream on the tail (+90m shock)</div>
+        @for (l of down(); track l.flight_id) {
+          <div class="down" [class.same]="l.same_pairing">
+            <span class="mono">{{ l.flight_no }}</span> {{ l.dep_station }}→{{ l.arr_station }}
+            <span class="down__cum">+{{ l.cumulative_delay_min }}m</span>
+          </div>
+        }
+        @if (!down().length) { <div class="muted sm">last leg of the day</div> }
+      </div>
+
+      @if (d.pairing_id) {
+        <div class="sect card">
+          <div class="sect__t">Cover options (reserve pool)</div>
+          @if (cover(); as cv) {
+            @for (o of cv.options; track o.action) {
+              <div class="opt"><span class="opt__r">{{ o.rank }}</span>
+                <span>{{ o.action }}</span><span class="mono">₹{{ o.cost_inr | number }}</span></div>
+            }
+            @if (!cv.options.length) { <div class="muted sm">no clean reserve — ask the advisor</div> }
+          } @else { <div class="muted sm">…</div> }
+          <div class="drawer__cta">
+            <a class="resolve" [routerLink]="['/workspace', d.flight_id]">Open resolution workspace →</a>
+            <button class="ask" type="button" (click)="askCover(d)">💬 Ask the advisor</button>
+          </div>
+        </div>
+      }
+    </div>
+  </app-modal>
+}

@@ -1,0 +1,16 @@
+<form class="composer" (submit)="send($event)">
+  <textarea
+    [(ngModel)]="text"
+    name="q"
+    rows="1"
+    placeholder="Ask the advisor…  (e.g. “Captain C-1042 called in sick for P-2291 — who do I use?”)"
+    (keydown.enter)="onEnter($event)"
+    [disabled]="store.busy()"
+  ></textarea>
+  <button type="submit" [disabled]="store.busy() || !text.trim()">
+    {{ store.busy() ? '…' : 'Ask' }}
+  </button>
+  @if (!store.isEmpty()) {
+    <button type="button" class="ghost" (click)="store.reset()" [disabled]="store.busy()">Clear</button>
+  }
+</form>

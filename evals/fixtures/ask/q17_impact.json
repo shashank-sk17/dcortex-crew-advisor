@@ -1,0 +1,36 @@
+{
+  "match": { "any": ["which flights are immediately uncrewed", "immediately uncrewed", "which flights are now uncrewed", "flights now uncovered", "which flights are uncovered"], "tier": 2 },
+  "status": "Tracing pairing P-2291 for C-1042…",
+  "trace": [
+    { "tool": "ripple", "args": { "event": { "type": "SICK_CREW", "crew_id": "C-1042", "pairing_id": "P-2291", "reported_utc": "2026-09-15T05:00:00Z" } },
+      "summary": "day 1: 3 legs uncrewed (486 pax); day 2: 3 legs at risk — pairing overnights at DEL",
+      "data": { "source": "rosters.json + flights.json" }, "ms": 19 }
+  ],
+  "rule_checks": [
+    { "rule_id": "RULE-QUAL-05", "subject": "P-2291", "status": "NOT_APPLICABLE", "detail": "No substitute proposed yet — impact assessment only." }
+  ],
+  "answer": {
+    "tier": 2,
+    "intent": "ASSESS_IMPACT",
+    "entities": { "crew_id": "C-1042", "pairing_id": "P-2291", "callout_utc": "2026-09-15T05:00:00Z" },
+    "answer": {
+      "kind": "replacement",
+      "uncovered_flights": ["DX412-2026-09-15", "DX413-2026-09-15", "DX588-2026-09-15"],
+      "at_risk_flights": ["DX589-2026-09-16", "DX590-2026-09-16", "DX591-2026-09-16"],
+      "passengers_affected": 486,
+      "funnel": [],
+      "options": [],
+      "near_misses": [],
+      "excluded": []
+    },
+    "narrative": "Three legs lose their Captain immediately — DX412, DX413 and DX588 on 15 Sep (486 passengers). Because P-2291 is a two-day pairing that overnights at DEL, day 2 (DX589/DX590/DX591 on 16 Sep) is also at risk: whoever covers day 1 must take the whole pairing, or day 2 is stranded at the wrong base.",
+    "citations": [
+      { "kind": "record", "source": "rosters.json", "id": "P-2291" },
+      { "kind": "record", "source": "flights.json", "id": "DX412-2026-09-15" }
+    ],
+    "confidence": "high",
+    "unknowns": []
+  },
+  "narration": "Three legs are uncrewed on 15 Sep — DX412, DX413, DX588, 486 passengers. Day 2 (DX589/590/591) is at risk because the pairing overnights at DEL. ",
+  "grounded": true
+}

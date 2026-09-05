@@ -1,0 +1,96 @@
+<div class="crew">
+  <div class="crew__bar">
+    <h2>Crew · {{ state.date() }}</h2>
+    <div class="filters">
+      @for (f of filters; track f.key) {
+        <button class="pill" [class.on]="filter() === f.key" (click)="setFilter(f.key)">{{ f.label }}</button>
+      }
+      <select [value]="role() ?? ''" (change)="setRole($any($event.target).value)">
+        <option value="">Any role</option>
+        @for (r of roles; track r) { <option [value]="r">{{ r }}</option> }
+      </select>
+      <input placeholder="Id / Name" [value]="q()" (input)="setQ($any($event.target).value)" />
+      <span class="muted">{{ rows().length }}</span>
+    </div>
+  </div>
+
+  <div class="tbl">
+    <div class="tr th"><span></span><span>crew</span><span>rank</span><span>base</span>
+      <span>duty 7d</span><span>risk</span></div>
+    @for (c of rows(); track c.crew_id) {
+      <button class="tr" [class.sel]="selectedId() === c.crew_id"
+              [class.att]="c.attention.flag" (click)="select(c.crew_id)">
+        <span class="dot" [class.on]="c.attention.flag" [title]="c.attention.reasons.join('; ')"></span>
+        <span><span class="mono">{{ c.crew_id }}</span> <span class="muted sm">{{ c.name }}</span></span>
+        <span class="sm">{{ c.rank }}</span>
+        <span class="mono sm">{{ c.base }}</span>
+        <span class="mono sm" [class.tight]="c.duty_7d_headroom < 3">{{ c.duty_7d | number: '1.1-2' }}h</span>
+        <span class="mono sm" [class.tight]="c.disruption_risk_score >= 0.7">{{ c.disruption_risk_score | number: '1.2-2' }}</span>
+      </button>
+    }
+  </div>
+</div>
+
+@if (detail(); as d) {
+  <app-modal [label]="d.crew_id + ' details'" (closed)="close()">
+    <div class="drawer">
+      <div class="drawer__head">
+        <div class="drawer__title">{{ d.crew_id }}</div>
+        <div class="drawer__route">{{ d.name }}</div>
+        <div class="muted sm">{{ d.rank }} · {{ d.base }} · {{ d.ratings.join('/') }} · sen {{ d.seniority }}</div>
+      </div>
+
+      @if (d.attention.flag) {
+        <div class="att-box card">
+          <b>Needs attention</b>
+          <ul>@for (r of d.attention.reasons; track r) { <li>{{ r }}</li> }</ul>
+        </div>
+      }
+
+      <div class="sect card">
+        <div class="sect__t">Duty clock</div>
+        <div class="kv"><span>Duty 7d</span><b [class.tight]="d.duty_clock.duty_7d_headroom < 3">
+          {{ d.duty_clock.duty_7d | number: '1.2-2' }}h · {{ d.duty_clock.duty_7d_headroom | number: '1.2-2' }}h headroom</b></div>
+        <div class="kv"><span>Block 28d</span><b>{{ d.duty_clock.flight_28d | number: '1.2-2' }}h · {{ d.duty_clock.flight_28d_headroom | number: '1.2-2' }}h headroom</b></div>
+        <div class="kv"><span>Rest</span><b [class.tight]="!d.duty_clock.rest_ok">{{ d.duty_clock.rest_ok ? 'OK' : 'SHORT' }} · last ended {{ d.duty_clock.last_rest_ended ?? '—' }}</b></div>
+      </div>
+
+      <div class="sect card">
+        <div class="sect__t">Certifications</div>
+        @for (c of d.certifications; track c.type) {
+          <div class="kv"><span>{{ c.type }}</span>
+            <b [class.tight]="c.days_to_expiry < 0" [class.warn]="c.expiring_soon">
+              {{ c.valid_to }} · {{ c.days_to_expiry }}d</b></div>
+        }
+      </div>
+
+      <div class="sect card">
+        <div class="sect__t">Risk {{ d.risk.score | number: '1.2-2' }}</div>
+        @for (dr of d.risk.drivers; track dr) { <div class="muted sm">· {{ dr }}</div> }
+      </div>
+
+      @if (d.assignments.length) {
+        <div class="sect card">
+          <div class="sect__t">This week</div>
+          @for (a of d.assignments; track a.pairing_id + a.date) {
+            <button class="asg" (click)="checkLegality(d.crew_id, a.pairing_id)">
+              <span class="mono">{{ a.pairing_id }}</span> {{ a.date }} · {{ a.role }} · {{ a.flights.length }} legs
+            </button>
+          }
+          @if (verdicts(); as v) {
+            <div class="verdicts">
+              <div class="sect__t">{{ checkedPairing() }} legality</div>
+              @for (r of v; track r.rule_id) {
+                <div class="vr" [attr.data-s]="r.status">
+                  <span class="mono">{{ r.rule_id }}</span><span>{{ glyph(r.status) }}</span><span class="sm">{{ r.detail }}</span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <button class="ask" type="button" (click)="ask(d)">💬 Ask the advisor about {{ d.crew_id }}</button>
+    </div>
+  </app-modal>
+}

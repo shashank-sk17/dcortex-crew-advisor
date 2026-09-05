@@ -1,0 +1,78 @@
+.crew { padding: 16px; }
+.crew__bar { display: flex; align-items: baseline; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; }
+
+.filters { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pill {
+  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--fg-2);
+}
+.pill.on { border-color: var(--accent-line); color: var(--accent); }
+select, input {
+  background: var(--surface-0); color: var(--fg-0); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 12px;
+}
+
+.tbl { border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
+.tr {
+  display: grid; grid-template-columns: 20px minmax(160px, 1fr) 130px 56px 140px 60px; gap: 8px;
+  align-items: center; width: 100%; min-width: 600px; text-align: left; padding: 9px 10px;
+  background: var(--surface-1); border: none; border-bottom: 1px solid var(--line);
+  color: var(--fg-1); font-size: 13.5px;
+}
+.tr.th { background: var(--surface-2); color: var(--fg-3); text-transform: uppercase; font-size: 11px; }
+.tr:hover:not(.th) { background: var(--surface-2); }
+.tr.sel { background: var(--accent-bg); }
+.tr.att { box-shadow: inset 3px 0 0 var(--warn); }
+
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--fg-3); }
+.dot.on { background: var(--warn); }
+
+/* crew cell: keep the id and the name visually separated */
+.tr .mono + .sm { margin-left: 10px; }
+
+.sm { font-size: 12.5px; }
+.lg { font-size: 17px; }
+.tight { color: var(--fail); }
+.warn { color: var(--warn); }
+
+.drawer { display: flex; flex-direction: column; gap: 16px; font-size: 14.5px; }
+
+/* heading — the crew id leads, big and dark, the way a card title does elsewhere */
+.drawer__head { display: flex; flex-direction: column; gap: 3px; padding-right: 4px; }
+.drawer__title {
+  font-family: var(--mono); font-size: 28px; font-weight: 800; letter-spacing: -0.01em;
+  color: var(--fg-0); line-height: 1.1;
+}
+.drawer__route { font-size: 16px; color: var(--fg-1); font-weight: 600; }
+
+.att-box {
+  border: 1px solid var(--warn-line); background: var(--warn-bg);
+  border-radius: 8px; padding: 12px 14px; font-size: 14px;
+}
+.att-box ul { margin: 8px 0 0; padding-left: 18px; color: var(--fg-1); }
+
+.sect__t {
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700;
+  color: var(--fg-3); margin-bottom: 8px;
+}
+.kv { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; padding: 4px 0; color: var(--fg-1); }
+.kv b { text-align: right; font-weight: 600; }
+
+.asg {
+  display: block; width: 100%; text-align: left; font-size: 13.5px; padding: 6px 8px; margin: 2px 0;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg-1);
+}
+.verdicts { margin-top: 10px; }
+.vr {
+  display: grid; grid-template-columns: 110px 18px 1fr; gap: 6px;
+  font-size: 13px; padding: 4px 0; align-items: baseline;
+}
+.vr[data-s="FAIL"] { color: var(--fail); }
+.vr[data-s="PASS"] { color: var(--fg-1); }
+
+.ask {
+  display: block; width: 100%; margin-top: 6px; font-size: 13.5px; font-weight: 700;
+  letter-spacing: 0.02em; text-align: center; padding: 10px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-line); background: var(--accent); color: #fff;
+}
+.ask:hover { background: color-mix(in oklab, var(--accent) 88%, black); }

@@ -1,0 +1,23 @@
+<div class="card">
+  <div class="card__title">Blast radius</div>
+  @if (!blast) {
+    <p class="muted">Tier-3 consequence output — direct hits, orphaned legs, aircraft knock-on.</p>
+  } @else {
+    <div class="stats">
+      <div class="stat"><span class="stat__n">{{ blast.nodes }}</span><span class="stat__l">nodes</span></div>
+      <div class="stat"><span class="stat__n">{{ blast.flights }}</span><span class="stat__l">flights</span></div>
+      <div class="stat"><span class="stat__n">{{ blast.aircraft }}</span><span class="stat__l">aircraft</span></div>
+      <div class="stat"><span class="stat__n">{{ blast.passengers }}</span><span class="stat__l">passengers</span></div>
+    </div>
+    <ul class="edges">
+      @for (e of blast.edges; track e.from + e.to) {
+        <li class="edge" [attr.data-kind]="e.kind">
+          <span class="mono">{{ e.from }}</span>
+          <span class="edge__arrow">→</span>
+          <span class="mono">{{ e.to }}</span>
+          <span class="edge__kind">{{ label(e.kind) }}</span>
+        </li>
+      }
+    </ul>
+  }
+</div>

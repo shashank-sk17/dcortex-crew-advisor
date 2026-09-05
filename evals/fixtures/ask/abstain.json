@@ -1,0 +1,19 @@
+{
+  "match": { "any": ["weather", "forecast", "metar", "why did", "last month", "profit", "passenger name", "which passengers", "predict", "likely to call in sick", "who will be disrupted"], "tier": 0 },
+  "status": "Checking whether the dataset can answer this…",
+  "trace": [
+    { "tool": "resolve_intent", "args": { "question": "…" },
+      "summary": "no tool covers this question; required fields absent from the dataset",
+      "data": { "matched_tools": [], "source": "schema registry" }, "ms": 12 }
+  ],
+  "abstain": {
+    "reason": "I can't answer that reliably. Nothing in the provided dataset supports it, and I will not infer a value.",
+    "needed": [
+      "A live weather / METAR feed (not in the dataset)",
+      "Operational history beyond the 7-day schedule window (2026-09-14 → 2026-09-20)",
+      "Passenger-level records — only aggregate seat counts are provided",
+      "A disruption-prediction model — risk_signals.json is a provided input, not something this advisor computes"
+    ]
+  },
+  "grounded": true
+}

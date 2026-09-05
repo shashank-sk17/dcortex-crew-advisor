@@ -1,0 +1,14 @@
+<div class="accordion__item" [attr.data-open]="open">
+  <button class="accordion__head" type="button" (click)="toggle.emit()" [attr.aria-expanded]="open">
+    <span class="accordion__title">
+      {{ title }}
+      @if (badge != null) { <span class="chip accordion__badge">{{ badge }}</span> }
+    </span>
+    <span class="accordion__chev">&#8250;</span>
+  </button>
+  <div class="accordion__body" [attr.aria-hidden]="!open">
+    <div class="accordion__body-inner">
+      <ng-content></ng-content>
+    </div>
+  </div>
+</div>

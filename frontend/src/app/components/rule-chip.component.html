@@ -1,0 +1,6 @@
+<div class="rc" [class.rc--pass]="status === 'PASS'" [class.rc--fail]="status === 'FAIL'">
+  <span class="rc__id mono">{{ ruleId }}</span>
+  <span class="rc__status">{{ statusGlyph }}</span>
+  @if (check?.margin) { <span class="rc__margin">{{ check?.margin }}</span> }
+  <span class="rc__detail">{{ check?.detail || label }}</span>
+</div>

@@ -1,0 +1,69 @@
+{
+  "match": { "any": ["what should i do", "ranked resolution", "resolution options", "produce ranked", "c-1042 is out", "what do i do about p-2291"], "tier": 3 },
+  "status": "Enumerating legal coverage options and blast radius…",
+  "trace": [
+    { "tool": "ripple", "args": { "event": { "type": "SICK_CREW", "crew_id": "C-1042", "pairing_id": "P-2291" } },
+      "summary": "blast radius: 6 nodes, 3 flights direct + 3 orphaned, 1 aircraft, 486 pax",
+      "data": { "source": "flights.json + rosters.json" }, "ms": 28 },
+    { "tool": "find_options", "args": { "pairing_id": "P-2291", "role": "Captain", "callout_utc": "2026-09-15T05:00:00Z" },
+      "summary": "6 legal options ranked by (legal, cost_inr, delay_hours)",
+      "data": { "legal": 6, "source": "rules.json + costs.json" }, "ms": 44 }
+  ],
+  "rule_checks": [
+    { "rule_id": "RULE-BASE-07", "subject": "C-3310", "status": "PASS", "detail": "BLR-based reserve; no deadhead cost applied." },
+    { "rule_id": "RULE-FDP-01", "subject": "C-3310", "status": "PASS", "margin": "spare", "detail": "3 sectors day 1 → FDP limit 12.5h; duty 9.5h." },
+    { "rule_id": "RULE-BASE-07", "subject": "C-2210", "status": "PASS", "detail": "DEL-based; deadhead cost ₹6,500 + 3h delay applied to option total." }
+  ],
+  "answer": {
+    "tier": 3,
+    "intent": "RECOMMEND_RESOLUTION",
+    "entities": { "crew_id": "C-1042", "pairing_id": "P-2291", "role": "Captain" },
+    "answer": {
+      "kind": "consequence",
+      "options": [
+        { "action": "Assign Captain C-3310 (reserve callout)", "crew_id": "C-3310", "legal": true,
+          "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"],
+          "cost_inr": 18500, "delay_hours": 0.0, "rank": 1,
+          "cost_breakdown": { "callout": 18500, "positioning": 0, "delay": 0 }, "blast_radius": 0, "coverage": "all 6 flights",
+          "reachability_minutes": 45, "reasoning": "BLR-based, A320-rated, on-call 06:00–18:00, reachable in 45 min. No deadhead, no delay, no knock-on." },
+        { "action": "Assign Captain C-1526 (day-off callout)", "crew_id": "C-1526", "legal": true,
+          "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"],
+          "cost_inr": 24000, "delay_hours": 0.0, "rank": 2,
+          "cost_breakdown": { "callout": 24000, "positioning": 0, "delay": 0 }, "blast_radius": 0, "coverage": "all 6 flights",
+          "reasoning": "Day-off callout — clean, ₹5,500 more than the reserve." },
+        { "action": "Assign Captain C-2210 (reserve callout + deadhead from DEL, first departure delayed ~3.0h)", "crew_id": "C-2210", "legal": true,
+          "rules_checked": ["RULE-FDP-01","RULE-DUTY-02","RULE-FLT-03","RULE-REST-04","RULE-QUAL-05","RULE-CERT-06","RULE-BASE-07"],
+          "cost_inr": 41200, "delay_hours": 3.0, "rank": 5,
+          "cost_breakdown": { "callout": 18500, "positioning": 6500, "delay": 16200 }, "blast_radius": 2, "coverage": "all 6 flights",
+          "unlock": "legal via DX402 deadhead DEL→BLR", "reasoning": "Only needed if no BLR cover is free. ₹41,200 all-in, DX412 ~3h late, zero cancellations — vs ₹250,000 to cancel one leg." },
+        { "action": "Cancel all 6 flights of the pairing", "crew_id": null, "legal": true,
+          "rules_checked": [], "cost_inr": 1500000, "delay_hours": 0.0, "rank": 6,
+          "cost_breakdown": { "cancellation": 1500000 }, "blast_radius": 6, "coverage": "0 flights",
+          "reasoning": "Last resort. ₹250,000 × 6 legs, 486+ passengers stranded across two days." }
+      ],
+      "blast_radius": {
+        "nodes": 6, "flights": 3, "aircraft": 1, "passengers": 486,
+        "edges": [
+          { "from": "C-1042", "to": "DX412-2026-09-15", "kind": "direct" },
+          { "from": "C-1042", "to": "DX413-2026-09-15", "kind": "direct" },
+          { "from": "C-1042", "to": "DX588-2026-09-15", "kind": "direct" },
+          { "from": "DX588-2026-09-15", "to": "DX589-2026-09-16", "kind": "orphaned_day2" },
+          { "from": "DX589-2026-09-16", "to": "DX590-2026-09-16", "kind": "orphaned_day2" },
+          { "from": "DX590-2026-09-16", "to": "DX591-2026-09-16", "kind": "orphaned_day2" },
+          { "from": "P-2291", "to": "VT-DXC", "kind": "aircraft_rotation" }
+        ]
+      },
+      "expected_choice": { "crew_id": "C-3310", "rank": 1 }
+    },
+    "narrative": "Recommendation: call reserve Captain C-3310 (₹18,500). BLR-based, A320-rated, on-call window covers the 06:00Z report, clears all seven rules, and takes the full 2-day pairing so day 2 out of DEL is not orphaned. If C-3310 is unreachable, C-1526 on a day-off callout is the clean fallback at ₹24,000. Deadheading C-2210 from DEL (₹41,200, DX412 ~3h late) only makes sense if no BLR captain is available — and even then it beats the ₹250,000-per-leg cancellation cost.",
+    "citations": [
+      { "kind": "rule", "id": "RULE-BASE-07" },
+      { "kind": "record", "source": "reserve_pool.json", "id": "C-3310" },
+      { "kind": "record", "source": "costs.json", "id": "reserve_callout_pilot" }
+    ],
+    "confidence": "high",
+    "unknowns": []
+  },
+  "narration": "Recommendation: call reserve Captain C-3310 at ₹18,500 — clean on all seven rules and covers the full 2-day pairing. ",
+  "grounded": true
+}

@@ -1,0 +1,8 @@
+.abstain {
+  border: 1px solid var(--warn-line); background: var(--warn-bg);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.abstain__head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.abstain__reason { margin: 0 0 8px; color: var(--fg-1); }
+.abstain__needed ul { margin: 4px 0 0; padding-left: 18px; }
+.abstain__needed li { font-size: 12px; color: var(--fg-2); margin: 2px 0; }
