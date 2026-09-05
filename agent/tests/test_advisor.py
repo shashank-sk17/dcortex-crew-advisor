@@ -569,3 +569,79 @@ class TestRejectedDraftMessage:
         llm = PlaceholderLLM([LLMResponse(text="Something unsourced.")] * 4)
         r = Advisor(llm=llm).ask("Who can cover P-9999?")
         assert all("claimed ," not in n for n in r.unknowns)
+
+
+class TestToolErrorsAreNotParaphrased:
+    """A tool failure is already written for a controller. Rewriting it can
+    only lose or distort the actionable part.
+
+    Asked about C-1045, the model reported "C-1045 isn't rostered on any
+    pairing this week" — the tool had said no such crew exists. It also
+    claimed ripple needed a crew_id that had been supplied, and dropped the
+    "did you mean C-1042" suggestion entirely.
+
+    The verifier passed all of it. The invention was narrative, so it carried
+    no number or identifier to check — the same blind spot as the fabricated
+    duty-limit warning and the leaked chain of thought.
+    """
+
+    def _unavailable(self):
+        from agent.schemas import AdvisorResponse, Intent, ReplacementAnswer, Tier, TraceEntry
+
+        return AdvisorResponse(
+            tier=Tier.REPLACEMENT, intent=Intent.FIND_REPLACEMENT,
+            answer=ReplacementAnswer(),
+            trace=[TraceEntry(tool="find_options",
+                              error="UNRESOLVED_ENTITY: There is no crew C-1045. "
+                                    "Nearest existing: C-1042 (Captain, BLR)")],
+        )
+
+    def test_an_empty_answer_is_never_sent_to_the_model(self):
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        liar = PlaceholderLLM([LLMResponse(text="C-1045 is not rostered this week.")])
+        out = explainer.polish(self._unavailable(), liar)
+        assert "not rostered" not in out
+        assert liar.calls == [], "the model was consulted about a tool failure"
+
+    def test_the_suggestion_survives_verbatim(self):
+        from agent import explainer
+
+        out = explainer.render(self._unavailable())
+        assert "C-1042" in out and "There is no crew C-1045" in out
+
+    def test_a_query_error_is_not_framed_as_a_missing_capability(self):
+        """"There is no crew C-1045" is a finding about the question, not a
+        gap in what we can do."""
+        from agent import explainer
+
+        out = explainer.render(self._unavailable())
+        assert "missing capability" not in out
+        assert "tools it needs are unavailable" not in out
+
+    def test_a_genuine_capability_gap_still_says_so(self):
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, ConsequenceAnswer, Intent, Tier, TraceEntry
+
+        r = AdvisorResponse(
+            tier=Tier.CONSEQUENCE, intent=Intent.JOINT_PLAN,
+            answer=ConsequenceAnswer(),
+            trace=[TraceEntry(tool="joint_plan",
+                              error="INTERNAL: joint_plan: needs the rules engine")],
+        )
+        assert "missing capability" in explainer.render(r)
+
+    def test_a_real_answer_is_still_polished(self):
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+        from agent.schemas import (AdvisorResponse, Intent, Option,
+                                   ReplacementAnswer, Tier, TraceEntry)
+
+        good = AdvisorResponse(
+            tier=Tier.REPLACEMENT, intent=Intent.FIND_REPLACEMENT,
+            answer=ReplacementAnswer(options=[Option("Assign C-3310", "C-3310", True)]),
+            trace=[TraceEntry(tool="find_options", result={"crew_id": "C-3310"})],
+        )
+        llm = PlaceholderLLM([LLMResponse(text="Use C-3310.")])
+        assert explainer.polish(good, llm) == "Use C-3310."

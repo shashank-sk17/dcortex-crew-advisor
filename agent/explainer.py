@@ -248,6 +248,22 @@ def render_consequence(answer: ConsequenceAnswer) -> str:
     return "\n".join(lines)
 
 
+def has_content(answer: Any) -> bool:
+    """Whether the answer object actually carries a finding.
+
+    An empty body means every tool failed, so the only thing to say is what
+    went wrong — and that is the tools' own words, not the model's.
+    """
+    match answer:
+        case LookupAnswer() as a:
+            return bool(a.rows)
+        case ReplacementAnswer() as a:
+            return bool(a.options or a.near_misses or a.uncovered_flights or a.funnel)
+        case ConsequenceAnswer() as a:
+            return bool(a.options or a.blast_radius or a.world_diff or a.joint_plan)
+    return False
+
+
 def render_unavailable(response: AdvisorResponse) -> str:
     """What to say when the tools that would answer this did not run.
 
@@ -257,6 +273,20 @@ def render_unavailable(response: AdvisorResponse) -> str:
     failed = [e for e in response.trace if e.error]
     if not failed:
         return "No data was returned for this question."
+
+    # A NEEDS_CONFIRMATION or UNRESOLVED_ENTITY error is about the *question*,
+    # not about our capability — it already reads as an answer, so lead with it
+    # verbatim rather than burying it under a header about missing tools.
+    about_the_query = [e for e in failed
+                       if e.error.startswith(("NEEDS_CONFIRMATION",
+                                              "UNRESOLVED_ENTITY"))]
+    if about_the_query:
+        seen: list[str] = []
+        for entry in about_the_query:
+            detail = entry.error.split(":", 1)[-1].strip()
+            if detail not in seen:
+                seen.append(detail)
+        return "\n\n".join(seen)
 
     lines = ["Cannot answer this yet — the tools it needs are unavailable:"]
     for entry in failed:
@@ -350,6 +380,19 @@ def polish(response: AdvisorResponse, llm: LLM | None = None) -> str:
     """
     template = render(response)
     if llm is None or isinstance(response.answer, LookupAnswer):
+        return template
+
+    # Never paraphrase a tool failure. The error text is already written for a
+    # controller and often carries the only actionable content — "there is no
+    # crew C-1045, did you mean C-1042?" — so rewriting it can only lose or
+    # distort that.
+    #
+    # Asked about C-1045, the model reported "C-1045 isn't rostered on any
+    # pairing this week" (the tool said no such crew exists), claimed ripple
+    # needed a crew_id that had been supplied, and dropped the C-1042
+    # suggestion entirely. The verifier passed all of it: the invention was
+    # narrative, so it contained no number or identifier to check.
+    if not has_content(response.answer):
         return template
 
     result = llm.complete(
