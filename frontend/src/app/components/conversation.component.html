@@ -15,9 +15,9 @@
   <div class="thread">
     @for (t of store.turns(); track t.id) {
       @if (t.role === 'user') {
-        <div class="user"><span class="user__badge">controller</span>{{ asUser(t).text }}</div>
+        <div class="user" [id]="'turn-' + t.id"><span class="user__badge">controller</span>{{ asUser(t).text }}</div>
       } @else {
-        <app-assistant-turn [turn]="asAssistant(t)" />
+        <app-assistant-turn [id]="'turn-' + t.id" [turn]="asAssistant(t)" />
       }
     }
   </div>

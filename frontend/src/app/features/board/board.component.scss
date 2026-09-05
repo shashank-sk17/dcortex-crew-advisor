@@ -65,12 +65,6 @@
 .opt__r { color: var(--legal); font-weight: 700; }
 
 .drawer__cta { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.resolve {
-  display: block; font-size: 13.5px; font-weight: 700; letter-spacing: 0.02em;
-  padding: 10px 12px; text-align: center; text-decoration: none; border-radius: var(--radius-sm);
-  border: var(--rule-w) solid var(--ref-line); background: var(--ref-bg); color: var(--ref);
-}
-.resolve:hover { background: color-mix(in oklab, var(--ref-bg) 60%, var(--ground-2)); }
 .ask {
   display: block; width: 100%; font-size: 13.5px; font-weight: 700; letter-spacing: 0.02em;
   padding: 10px 12px; text-align: center; border-radius: var(--radius-sm);

@@ -1,7 +1,11 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, inject, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import {
-  AssistantTurn, ConsequenceAnswer, LookupAnswer, ReplacementAnswer,
+  AssistantTurn, ConsequenceAnswer, LookupAnswer, Option, ReplacementAnswer,
 } from '../models/agent-events';
+import { API } from '../core/api.port';
+import { Decision } from '../core/api.types';
+import { ConversationStore } from '../services/conversation.store';
 import { Tier1TableComponent } from './tier1-table.component';
 import { ImpactCardComponent } from './impact-card.component';
 import { OptionsCardComponent } from './options-card.component';
@@ -24,7 +28,7 @@ const TIER_LABEL: Record<number, string> = {
   selector: 'app-assistant-turn',
   standalone: true,
   imports: [
-    Tier1TableComponent, ImpactCardComponent, OptionsCardComponent,
+    DecimalPipe, Tier1TableComponent, ImpactCardComponent, OptionsCardComponent,
     RuleTraceComponent, TracePanelComponent, AbstainCardComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,6 +37,16 @@ const TIER_LABEL: Record<number, string> = {
 })
 export class AssistantTurnComponent {
   @Input({ required: true }) turn!: AssistantTurn;
+
+  private api = inject(API);
+  private conversation = inject(ConversationStore);
+
+  /** The controller's decision on this turn's recommendation, once recorded. */
+  readonly decision = signal<Decision | null>(null);
+  readonly showModify = signal(false);
+  readonly chosenCrewId = signal<string | null>(null);
+  readonly reason = signal('');
+  readonly deciding = signal(false);
 
   get tierLabel(): string | null {
     return this.turn.tier != null ? (TIER_LABEL[this.turn.tier] ?? `Tier ${this.turn.tier}`) : null;
@@ -46,5 +60,74 @@ export class AssistantTurnComponent {
   }
   get consequence(): ConsequenceAnswer | null {
     return this.turn.answer?.kind === 'consequence' ? this.turn.answer : null;
+  }
+
+  /** Whether this answer carries a recommendation at all — gates showing Accept/Modify. */
+  get hasOptions(): boolean {
+    return (this.replacement?.options.length ?? 0) > 0 || (this.consequence?.options.length ?? 0) > 0;
+  }
+
+  /**
+   * The "Modify" dropdown's source — deliberately everyone the agent did NOT put
+   * an Accept button in front of: near-misses (legal, just not top-ranked) and
+   * excluded candidates (blocked by a rule — assignable only as a logged override).
+   * The already-suggested `options` list is never repeated here.
+   */
+  get modifyOptions(): Option[] {
+    const nearMiss = this.replacement?.near_misses ?? [];
+    const overrides: Option[] = (this.replacement?.excluded ?? []).map((x) => ({
+      action: `Assign ${x.crew_id} — override (fails ${x.verdicts.map((v) => v.rule_id).join(', ')})`,
+      crew_id: x.crew_id, legal: false, rules_checked: x.verdicts.map((v) => v.rule_id),
+      cost_inr: 0, delay_hours: 0, rank: 0,
+    }));
+    return [...nearMiss, ...overrides].filter((o) => o.crew_id);
+  }
+
+  /** The controller accepted one of the options-card's own per-row suggestions, as-is. */
+  acceptOption(o: Option): void {
+    this.record(o, true);
+  }
+
+  startModify(): void {
+    this.showModify.set(true);
+  }
+  cancelModify(): void {
+    this.showModify.set(false);
+    this.chosenCrewId.set(null);
+    this.reason.set('');
+  }
+  confirmModify(): void {
+    const picked = this.modifyOptions.find((o) => o.crew_id === this.chosenCrewId());
+    if (picked) this.record(picked, false, this.reason().trim());
+  }
+
+  /**
+   * Accept/Modify don't just write an audit row — they hand the choice to the
+   * agent as an instruction, same channel as any question, so the confirmation
+   * the controller reads is a real streamed reply, not a string this component
+   * invented. The /decisions POST still runs alongside it so the audit trail
+   * is real too — in production, the agent's own tool call would do both in
+   * one request; here the two mocks are separate, so both are triggered.
+   */
+  private record(option: Option, accepted: boolean, reason?: string): void {
+    this.deciding.set(true);
+    const ref = this.turn.entities['flight_id'] ?? this.turn.entities['pairing_id'] ?? this.turn.id;
+    this.api.postDecision({
+      disruption_ref: ref, chosen_option: option, weights: {}, accepted, note: reason || undefined,
+    }).subscribe({
+      next: (d) => {
+        this.deciding.set(false);
+        this.showModify.set(false);
+        this.decision.set(d);
+        const msg = reason
+          ? `Confirm assignment: ${option.crew_id} — ${option.action} for ${ref}. Reason: ${reason}`
+          : `Confirm assignment: ${option.crew_id} — ${option.action} for ${ref}.`;
+        this.conversation.ask(msg);
+      },
+      error: () => {
+        this.deciding.set(false);
+        this.conversation.pushNote('Could not record that decision — retry.');
+      },
+    });
   }
 }

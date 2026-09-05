@@ -282,7 +282,16 @@ export function reservePoolByBaseRole(ds: Dataset, onDate: string): Record<strin
 
 export function buildSummary(ds: Dataset, onDate: string): Summary {
   const dayFlights = ds.flights.filter((f) => f.date === onDate);
-  const ranks = dayFlights.map((f) => delayRank(ds, f).rank);
+  const rankedFlights = dayFlights.map((f) => ({ f, rank: delayRank(ds, f).rank }));
+  const ranks = rankedFlights.map((r) => r.rank);
+  const disruptedFlights = rankedFlights.filter((r) => r.rank === 'critical' || r.rank === 'high');
+  const paxAffected = disruptedFlights.reduce((sum, r) => sum + r.f.seats, 0);
+  const disrupted = disruptedFlights
+    .sort((a, b) => b.f.seats - a.f.seats)
+    .map((r) => ({
+      flight_id: r.f.flight_id, flight_no: r.f.flight_no,
+      route: `${r.f.dep_station}→${r.f.arr_station}`, pax: r.f.seats,
+    }));
   const onDutyCrew = ds.crew.filter((c) => onDuty(ds, c.crew_id, onDate));
   const reserveCrew = ds.reserves.filter((r) => r.dates.includes(onDate));
   const needAtt = ds.crew.filter((c) => attention(ds, c, onDate).flag).length;
@@ -302,6 +311,8 @@ export function buildSummary(ds: Dataset, onDate: string): Summary {
       at_risk: ranks.filter((r) => r === 'critical').length,
       delayed: ranks.filter((r) => r === 'high').length,
       cancelled: 0,
+      pax_affected: paxAffected,
+      disrupted,
     },
     alerts: {
       critical: alerts.filter((a) => a.severity === 'critical').length,

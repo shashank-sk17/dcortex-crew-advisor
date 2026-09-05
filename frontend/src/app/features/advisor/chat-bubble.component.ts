@@ -29,5 +29,15 @@ export class ChatBubbleComponent {
         if (q) this.store.ask(q);
       }
     });
+
+    // pin the newest response's own top to the top of the panel — read it from
+    // the start as it streams in, rather than snapping to the bottom of the thread
+    effect(() => {
+      const last = this.store.lastAssistant();
+      if (!last) return;
+      queueMicrotask(() => {
+        document.getElementById(`turn-${last.id}`)?.scrollIntoView({ block: 'start' });
+      });
+    });
   }
 }

@@ -13,21 +13,51 @@ type Beat = [number, AgentEvent];
 @Injectable({ providedIn: 'root' })
 export class MockAdvisorService {
   ask(question: string): Observable<AgentEvent> {
-    const q = question.toLowerCase();
+    const assign = question.match(/^Confirm assignment: (.+?) — (.+?) for ([^.]+)\.(?: Reason: (.+))?$/);
     let beats: Beat[];
-    if (/what should i do|recommend|resolution options|produce ranked|c-1042 is out/.test(q)) {
-      beats = TIER3;
-    } else if (/immediately uncrewed|now uncrewed|which flights are uncovered/.test(q)) {
-      beats = TIER2_IMPACT;
-    } else if (/sick|cover p-2291|who do i (use|call)|if (captain |fo )?c-2087|breach|move .* onto/.test(q)) {
-      beats = TIER2;
-    } else if (/weather|forecast|metar|why did|last month|profit|passenger name|predict|likely to call/.test(q)) {
-      beats = ABSTAIN;
+    if (assign) {
+      const [, crewId, action, ref, reason] = assign;
+      beats = buildAssignBeats(crewId, action, ref, reason);
     } else {
-      beats = TIER1;
+      const q = question.toLowerCase();
+      if (/what should i do|recommend|resolution options|produce ranked|c-1042 is out/.test(q)) {
+        beats = TIER3;
+      } else if (/immediately uncrewed|now uncrewed|which flights are uncovered/.test(q)) {
+        beats = TIER2_IMPACT;
+      } else if (/sick|cover p-2291|who do i (use|call)|if (captain |fo )?c-2087|breach|move .* onto/.test(q)) {
+        beats = TIER2;
+      } else if (/weather|forecast|metar|why did|last month|profit|passenger name|predict|likely to call/.test(q)) {
+        beats = ABSTAIN;
+      } else {
+        beats = TIER1;
+      }
     }
     return from(beats).pipe(concatMap(([ms, ev]) => of(ev).pipe(delay(ms))));
   }
+}
+
+/**
+ * The chat's Accept/Modify buttons don't call a REST endpoint directly — they
+ * send the choice to the agent as an instruction (`Confirm assignment: …`), same
+ * as any other question, so the outcome comes back as a real streamed reply
+ * instead of a client-fabricated string. A real backend would route this to a
+ * `log_decision`-style tool that performs the same POST /decisions write
+ * server-side while narrating the result. Modify's override reason rides along
+ * on the same instruction (` Reason: …`) so the agent's reply can echo it back.
+ */
+function buildAssignBeats(crewId: string, action: string, ref: string, reason?: string): Beat[] {
+  const prose = reason
+    ? `Assigned — ${action}. Override reason: ${reason}. Recorded to the shift log. `
+    : `Assigned — ${action}. Recorded to the shift log. `;
+  const args: Record<string, unknown> = { crew_id: crewId, disruption_ref: ref };
+  if (reason) args['note'] = reason;
+  return [
+    [100, { type: 'status', text: 'Recording the decision…' }],
+    [200, { type: 'tool_call', id: 'a1', tool: 'log_decision', args }],
+    [220, { type: 'tool_result', id: 'a1', tool: 'log_decision', ms: 8, summary: `${crewId} logged against ${ref}`, data: { logged: true } }],
+    ...words(prose),
+    [80, { type: 'done', elapsed_ms: 500, grounded: true }],
+  ];
 }
 
 const words = (s: string, ms = 20): Beat[] =>

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { API } from '../../core/api.port';
 import { AppState } from '../../core/app-state';
@@ -17,7 +17,7 @@ import { ModalComponent } from '../../components/modal.component';
 @Component({
   selector: 'app-board',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, RouterLink, ModalComponent],
+  imports: [DatePipe, DecimalPipe, ModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './board.component.html',
   styleUrl: './board.component.scss',

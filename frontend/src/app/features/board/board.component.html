@@ -80,7 +80,6 @@
             @if (!cv.options.length) { <div class="muted sm">no clean reserve — ask the advisor</div> }
           } @else { <div class="muted sm">…</div> }
           <div class="drawer__cta">
-            <a class="resolve" [routerLink]="['/workspace', d.flight_id]">Open resolution workspace →</a>
             <button class="ask" type="button" (click)="askCover(d)">💬 Ask the advisor</button>
           </div>
         </div>

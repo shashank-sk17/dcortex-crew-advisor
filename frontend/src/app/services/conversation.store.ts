@@ -38,6 +38,19 @@ export class ConversationStore {
     this._weights.set({ ...this._weights(), ...w });
   }
 
+  /**
+   * Append a settled, non-streaming assistant turn straight into the thread —
+   * used for the agent's reply once a decision (accept / modify) is recorded,
+   * so the outcome shows up as a normal message, not just a card mutating in
+   * place.
+   */
+  pushNote(prose: string): void {
+    this._turns.update((t) => [
+      ...t,
+      { ...emptyAssistantTurn(crypto.randomUUID(), null), prose, streaming: false },
+    ]);
+  }
+
   ask(question: string): void {
     this.run(question, () => this.advisor.ask(question, this.opts()));
   }
