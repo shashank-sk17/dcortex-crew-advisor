@@ -28,6 +28,7 @@ class Intent(enum.StrEnum):
     LOOKUP_RESERVE = "LOOKUP_RESERVE"
     LOOKUP_DUTY_CLOCK = "LOOKUP_DUTY_CLOCK"
     LOOKUP_CERT = "LOOKUP_CERT"
+    LOOKUP_RISK = "LOOKUP_RISK"
     LOOKUP_FLIGHT = "LOOKUP_FLIGHT"
     LOOKUP_CREW = "LOOKUP_CREW"
     EXPLAIN_RULE = "EXPLAIN_RULE"
@@ -40,6 +41,7 @@ class Intent(enum.StrEnum):
     SIMULATE_WHATIF = "SIMULATE_WHATIF"
     JOINT_PLAN = "JOINT_PLAN"
     RESOLVE_ILLEGAL = "RESOLVE_ILLEGAL"
+    DRAFT_NOTIFICATION = "DRAFT_NOTIFICATION"
 
     @property
     def tier(self) -> Tier:
@@ -51,6 +53,7 @@ _INTENT_TIER: dict[Intent, Tier] = {
     Intent.LOOKUP_RESERVE: Tier.LOOKUP,
     Intent.LOOKUP_DUTY_CLOCK: Tier.LOOKUP,
     Intent.LOOKUP_CERT: Tier.LOOKUP,
+    Intent.LOOKUP_RISK: Tier.LOOKUP,
     Intent.LOOKUP_FLIGHT: Tier.LOOKUP,
     Intent.LOOKUP_CREW: Tier.LOOKUP,
     Intent.EXPLAIN_RULE: Tier.LOOKUP,
@@ -61,6 +64,7 @@ _INTENT_TIER: dict[Intent, Tier] = {
     Intent.SIMULATE_WHATIF: Tier.CONSEQUENCE,
     Intent.JOINT_PLAN: Tier.CONSEQUENCE,
     Intent.RESOLVE_ILLEGAL: Tier.CONSEQUENCE,
+    Intent.DRAFT_NOTIFICATION: Tier.CONSEQUENCE,
 }
 
 
@@ -127,6 +131,14 @@ class Option:
     unlock: str | None = None
     """Near-miss only: what would make this legal, e.g. 'departure slips 35 min'."""
 
+    # Who the candidate is. A controller acts on a person, not an id.
+    name: str = ""
+    seniority: int | None = None
+    base: str = ""
+    reachability_minutes: int | None = None
+    disruption_risk_score: float | None = None
+    """Provided input, reported beside the option and never used to rank it."""
+
     @property
     def is_near_miss(self) -> bool:
         return not self.legal and self.unlock is not None
@@ -185,6 +197,21 @@ class LookupAnswer:
 
 
 @dataclass(slots=True)
+class NotificationAnswer:
+    """A message to a crew member, and the roster facts it was built from.
+
+    `brief` is kept beside the prose deliberately. It is what the verifier
+    checks the message against, and it is what a controller amending the
+    wording needs in front of them — every time in the draft is in there,
+    labelled, so an edit cannot quietly move one.
+    """
+
+    kind: str = "notification"
+    message: str = ""
+    brief: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class ReplacementAnswer:
     kind: str = "replacement"
     recommended: Option | None = None
@@ -199,6 +226,9 @@ class ReplacementAnswer:
     options: list[Option] = field(default_factory=list)
     near_misses: list[Option] = field(default_factory=list)
     excluded: list[dict[str, Any]] = field(default_factory=list)
+    subject_name: str = ""
+    subject_rank: str = ""
+    """Who `subject` is. A verdict about "C-2087" is about a person."""
 
     # A direct legality question — "if C-2087 covers P-2291, does anything
     # breach?" — answers with verdicts rather than candidates.
@@ -225,6 +255,9 @@ class AdvisorResponse:
 
     tier: Tier
     intent: Intent
+    query: str = ""
+    """The controller's own words. A lookup answer is only judgeable against
+    the question that was asked — "16 records" answers nothing on its own."""
     entities: dict[str, Any] = field(default_factory=dict)
     answer: AnswerBody | None = None
     narrative: str = ""

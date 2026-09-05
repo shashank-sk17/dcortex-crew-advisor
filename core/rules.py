@@ -44,6 +44,11 @@ class CrewSnapshot:
     daily_flight: dict[date, float] = field(default_factory=dict)
     certs: tuple[tuple[str, date, date], ...] = ()   # (type, valid_from, valid_to)
     assigned: tuple[tuple[str, datetime, datetime], ...] = ()  # (pairing, report, release)
+    name: str = ""
+    """Who they are. No rule reads it — but a controller phoning someone at
+    05:00 does, and "Assign D. Reddy (C-3310)" is what they need to hear."""
+    seniority: int | None = None
+    """Years of service. Reported, never used to sort: see `find_options`."""
 
     def duty_in_window(self, end: date, days: int = DUTY_WINDOW_DAYS) -> float:
         start, stop = calendar_window(end, days)

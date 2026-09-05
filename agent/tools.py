@@ -41,19 +41,42 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "entity": {
                     "type": "string",
                     "enum": [
-                        "crew", "flights", "pairings", "reserves",
-                        "certifications", "risk_signals", "costs",
+                        "crew", "flights", "pairings", "pairing_crew",
+                        "pairing_days", "reserves", "certifications",
+                        "risk_signals", "duty_clocks", "costs",
                     ],
                 },
                 "filters": {
                     "type": "object",
                     "description": (
-                        "Field equality filters, e.g. {'base': 'BLR', "
-                        "'rank': 'Captain'}. Dates are ISO-8601."
+                        "Field filters, e.g. {'base': 'BLR', 'rank': 'Captain'}. "
+                        "Dates are ISO-8601. A value may instead be a range, "
+                        "e.g. {'valid_to': {'gte': '2026-09-15', "
+                        "'lte': '2026-10-15'}} for 'expiring within 30 days of "
+                        "15 Sep'. Operators: gte, lte, gt, lt."
                     ),
                 },
             },
             "required": ["entity"],
+        },
+    },
+    {
+        "name": "notification_brief",
+        "description": (
+            "Every fact a callout message needs for one crew member on one "
+            "pairing: report times and stations per day, the legs in order, "
+            "overnight stations, and an acknowledgement deadline derived from "
+            "the crew member's own reachability. Read from the roster — call "
+            "this before drafting a notification rather than writing times "
+            "from memory."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "crew_id": {"type": "string"},
+                "pairing_id": {"type": "string"},
+            },
+            "required": ["crew_id", "pairing_id"],
         },
     },
     {
@@ -246,6 +269,14 @@ FIELD_ALIASES: dict[str, str] = {
 }
 
 
+# Range operators, mapped to the SQL they mean. Equality stays the default —
+# these exist because some tier-1 questions are genuinely intervals ("expiring
+# within 30 days of 15 Sep" is `valid_to` between two dates) and answering one
+# by pulling every row and letting the model filter would put the selection
+# back above the trust boundary, which is the one thing we do not do.
+RANGE_OPS: dict[str, str] = {"gte": ">=", "lte": "<=", "gt": ">", "lt": "<"}
+
+
 def resolve_filters(
     entity: str, filters: dict[str, Any] | None, known: frozenset[str] | set[str]
 ) -> dict[str, Any]:
@@ -253,21 +284,120 @@ def resolve_filters(
 
     `known` comes from the live backend, so JSON and Postgres each get their
     own column set rather than sharing one hardcoded list.
+
+    A value may be a scalar (equality), a list (membership), or a dict of
+    `RANGE_OPS` (an interval). An unknown operator is rejected here rather
+    than silently ignored — a dropped bound would quietly widen the result
+    set, and the caller would have no way to tell.
     """
     resolved: dict[str, Any] = {}
     for key, value in (filters or {}).items():
         if key in known:
-            resolved[key] = value
-            continue
-        alias = FIELD_ALIASES.get(key.lower().replace(" ", "_"))
-        if alias and alias in known:
-            resolved[alias] = value
-            continue
-        raise ToolError(
-            "UNRESOLVED_ENTITY",
-            f"{entity} has no field {key!r}. Valid fields: {', '.join(sorted(known))}",
-        )
+            column = key
+        else:
+            alias = FIELD_ALIASES.get(key.lower().replace(" ", "_"))
+            if not (alias and alias in known):
+                raise ToolError(
+                    "UNRESOLVED_ENTITY",
+                    f"{entity} has no field {key!r}. "
+                    f"Valid fields: {', '.join(sorted(known))}",
+                )
+            column = alias
+
+        if isinstance(value, dict):
+            bad = sorted(set(value) - set(RANGE_OPS))
+            if bad:
+                raise ToolError(
+                    "UNRESOLVED_ENTITY",
+                    f"unknown filter operator{'s' if len(bad) > 1 else ''} "
+                    f"{', '.join(repr(b) for b in bad)} on {column!r}. "
+                    f"Valid operators: {', '.join(sorted(RANGE_OPS))}",
+                )
+        resolved[column] = value
     return resolved
+
+
+def with_crew_identity(rows: list[dict[str, Any]],
+                       crew: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Attach name and rank to rows keyed by crew_id.
+
+    `reserve_pool` holds a crew id and an on-call window and nothing about the
+    person, but Q01's answer key gives a rank for every reserve — and rightly:
+    "who is on reserve" is unanswerable if you cannot see whether they are a
+    Captain. The join belongs in the port, which is the layer whose job is to
+    present a domain entity rather than a table.
+    """
+    by_id = {c["crew_id"]: c for c in crew}
+    out = []
+    for row in rows:
+        who = by_id.get(row.get("crew_id"))
+        out.append({**row, "name": who.get("name"), "rank": who.get("rank")}
+                   if who else dict(row))
+    return out
+
+
+def crew_named(port: Any, name: str) -> list[dict[str, Any]]:
+    """Roster entries whose name matches, by surname or in full.
+
+    Deliberately returns every match rather than a best one. In this dataset
+    all 150 crew share 20 surnames — "Nair" is seven people and "A. Nair" is
+    two of them, a Captain and a Cabin Crew member at the same base. There is
+    no defensible way to pick one, so the caller asks.
+    """
+    wanted = name.strip().lower()
+    if not wanted:
+        return []
+    out = []
+    for row in port.lookup("crew"):
+        full = str(row.get("name") or "").lower()
+        if full == wanted or full.split()[-1:] == [wanted]:
+            out.append(row)
+    return out
+
+
+def _comparable(value: Any) -> Any:
+    """Coerce a value so a row and a filter bound can be ordered together.
+
+    ISO-8601 dates sort correctly as strings, which is why the range filters
+    work at all on the JSON backend. But a row read from Postgres arrives as
+    `datetime.date` while the bound is still the model's string, and `date <
+    str` raises. Comparing both as text is exact for ISO dates and harmless
+    for everything else that reaches here.
+    """
+    return value if isinstance(value, (int, float)) else str(value)
+
+
+def row_matches(row: dict[str, Any], column: str, want: Any) -> bool:
+    """Whether one row satisfies one resolved filter. In-memory backends only.
+
+    Postgres builds the equivalent predicate in SQL instead — see
+    `PostgresToolPort.lookup`. The two must agree, and `test_tools.py` asserts
+    the semantics both implement.
+    """
+    have = row.get(column)
+    if isinstance(want, dict):
+        if have is None:
+            return False
+        for op, bound in want.items():
+            left, right = _comparable(have), _comparable(bound)
+            if op == "gte" and not left >= right:
+                return False
+            if op == "lte" and not left <= right:
+                return False
+            if op == "gt" and not left > right:
+                return False
+            if op == "lt" and not left < right:
+                return False
+        return True
+    if isinstance(want, (list, tuple)):
+        # A list means membership, except against a list-valued column
+        # (`ratings`, `dates`), where it means containment.
+        if isinstance(have, (list, tuple)):
+            return all(w in have for w in want)
+        return have in want
+    if isinstance(have, (list, tuple)):
+        return want in have
+    return have == want
 
 
 def schemas_for_port(port: Any) -> list[dict[str, Any]]:
@@ -319,6 +449,7 @@ class ToolPort(Protocol):
 
     def lookup(self, entity: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
     def duty_clock(self, crew_id: str, date: str | None = None) -> dict[str, Any]: ...
+    def notification_brief(self, crew_id: str, pairing_id: str) -> dict[str, Any]: ...
     def check_legality(self, crew_id: str, pairing_id: str, delay_h: float = 0.0) -> dict[str, Any]: ...
     def find_options(self, pairing_id: str, role: str, callout_utc: str | None = None) -> dict[str, Any]: ...
     def ripple(self, event: dict[str, Any]) -> dict[str, Any]: ...
@@ -369,6 +500,10 @@ class PlaceholderToolPort:
         "crew": "crew", "flights": "flights", "reserves": "reserve_pool",
         "certifications": "certifications", "risk_signals": "risk_signals",
         "costs": "costs", "pairings": "rosters",
+        # Postgres normalises these into their own tables. Flattening them
+        # here keeps one entity set across both backends, which is the whole
+        # point of the port: a seed call must not have to know which is live.
+        "pairing_crew": "rosters", "pairing_days": "rosters",
     }
     ENTITIES = tuple(SOURCES)
 
@@ -379,6 +514,12 @@ class PlaceholderToolPort:
         rows = self._load(source)
         if entity == "pairings":
             rows = rows["pairings"]
+        elif entity == "pairing_crew":
+            return [{"pairing_id": p["pairing_id"], **c}
+                    for p in rows["pairings"] for c in p.get("crew", [])]
+        elif entity == "pairing_days":
+            return [{"pairing_id": p["pairing_id"], **d}
+                    for p in rows["pairings"] for d in p.get("days", [])]
         return [rows] if isinstance(rows, dict) else rows
 
     def entity_fields(self, entity: str) -> frozenset[str]:
@@ -403,8 +544,30 @@ class PlaceholderToolPort:
     def lookup(self, entity: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         rows = self._rows(entity)
         for key, want in resolve_filters(entity, filters, self.entity_fields(entity)).items():
-            rows = [r for r in rows if r.get(key) == want]
+            rows = [r for r in rows if row_matches(r, key, want)]
+        if entity == "reserves":
+            rows = with_crew_identity(rows, self._rows("crew"))
         return rows
+
+    def notification_brief(self, crew_id: str, pairing_id: str) -> dict[str, Any]:
+        from agent import notify
+
+        crew = self.lookup("crew", {"crew_id": crew_id})
+        if not crew:
+            raise ToolError("UNRESOLVED_ENTITY", f"no crew {crew_id!r}")
+        pairings = self.lookup("pairings", {"pairing_id": pairing_id})
+        if not pairings:
+            raise ToolError("UNRESOLVED_ENTITY", f"no pairing {pairing_id!r}")
+        pairing = pairings[0]
+
+        by_id = {f["flight_id"]: f for f in self._rows("flights")}
+        days = [
+            {**day, "flights": [by_id[f] for f in day.get("flights", []) if f in by_id]}
+            for day in pairing.get("days", [])
+        ]
+        role = next((c["role"] for c in pairing.get("crew", [])
+                     if c["crew_id"] == crew_id), None)
+        return notify.assemble(crew[0], pairing_id, pairing.get("aircraft"), days, role)
 
     def explain_rule(self, rule_id: str) -> dict[str, Any]:
         rules = self._load("rules")["rules"]

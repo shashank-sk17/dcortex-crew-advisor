@@ -229,21 +229,69 @@ class TestToolLoopDeduplication:
         assert len(llm.calls) < 5, "should break out, not burn the iteration cap"
 
 
-class TestLookupIsNeverPolished:
-    def test_lookup_uses_the_template_verbatim(self):
+class TestLookupPolish:
+    """Tier 1 gets a model pass, but only where it cannot invent a situation."""
+
+    def _liar(self):
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        return PlaceholderLLM(
+            [LLMResponse(text="The crew has exceeded its duty limits.")])
+
+    def _response(self, intent, rows):
+        from agent.schemas import AdvisorResponse, LookupAnswer, Tier
+
+        return AdvisorResponse(tier=Tier.LOOKUP, intent=intent, query="q",
+                               answer=LookupAnswer(rows=rows))
+
+    def test_rule_text_is_never_polished(self):
         """llama3.1:8b answered "what does RULE-DUTY-02 say?" with an invented
         situation — a crew that had exceeded its limits. Nothing existed to
         exceed anything. The verifier passed it because the fabrication was
-        narrative, not numeric."""
+        narrative, not numeric. The rule text is the answer; summarising it
+        can only drift from the regulation."""
         from agent import explainer
-        from agent.llm import LLMResponse, PlaceholderLLM
-        from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier
 
-        liar = PlaceholderLLM([LLMResponse(text="The crew has exceeded its duty limits.")])
-        resp = AdvisorResponse(tier=Tier.LOOKUP, intent=Intent.EXPLAIN_RULE,
-                               answer=LookupAnswer(rows=[{"rule_id": "RULE-DUTY-02"}]))
+        liar = self._liar()
+        resp = self._response(Intent.EXPLAIN_RULE, [{"rule_id": "RULE-DUTY-02"}])
         assert explainer.polish(resp, liar) == explainer.render(resp)
         assert llm_unused(liar)
+
+    def test_an_empty_lookup_is_never_polished(self):
+        """With no rows the only thing to say is what went wrong, and that is
+        the tools' own words."""
+        from agent import explainer
+
+        liar = self._liar()
+        resp = self._response(Intent.LOOKUP_CREW, [])
+        assert explainer.polish(resp, liar) == explainer.render(resp)
+        assert llm_unused(liar)
+
+    def test_a_data_lookup_is_answered_in_prose_over_its_evidence(self):
+        """"Who is C-1042" fanned out to nine calls across seven entities and
+        the template answered "16 records." followed by seven tables. Every
+        fact present, the question unanswered."""
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        llm = PlaceholderLLM([LLMResponse(text="C-1042 is Captain A. Nair.")])
+        resp = self._response(Intent.LOOKUP_CREW,
+                              [{"crew_id": "C-1042", "name": "A. Nair"}])
+        out = explainer.polish(resp, llm)
+        assert out.startswith("C-1042 is Captain A. Nair.")
+        assert "A. Nair" in out and llm.calls, "tables dropped, or model unused"
+        assert explainer.render(resp) in out, "evidence must survive beneath it"
+
+    def test_the_question_reaches_the_model(self):
+        """A lookup answer is only judgeable against what was asked."""
+        from agent import explainer
+        from agent.llm import LLMResponse, PlaceholderLLM
+
+        llm = PlaceholderLLM([LLMResponse(text="ok")])
+        resp = self._response(Intent.LOOKUP_CREW, [{"crew_id": "C-1042"}])
+        resp.query = "who is C-1042"
+        explainer.polish(resp, llm)
+        assert "who is C-1042" in llm.calls[0]["messages"][0]["content"]
 
 
 def llm_unused(llm) -> bool:
@@ -361,9 +409,10 @@ class TestRendererNeverComputes:
     """
 
     def _long(self):
+        from agent import explainer
         from agent.schemas import AdvisorResponse, Intent, LookupAnswer, Tier, TraceEntry
 
-        rows = [{"crew_id": f"C-{1000+i}"} for i in range(21)]
+        rows = [{"crew_id": f"C-{1000+i}"} for i in range(explainer.ROW_LIMIT + 11)]
         return AdvisorResponse(
             tier=Tier.LOOKUP, intent=Intent.LOOKUP_CREW, answer=LookupAnswer(rows=rows),
             trace=[TraceEntry(tool="lookup", result=rows)],
@@ -386,7 +435,7 @@ class TestRendererNeverComputes:
     def test_total_is_still_reported(self):
         from agent import explainer
 
-        assert "21 records" in explainer.render(self._long())
+        assert f"{explainer.ROW_LIMIT + 11} records" in explainer.render(self._long())
 
 
 class TestArrayAndAliasCoverage:
@@ -776,3 +825,337 @@ class TestClarifyingQuestionsReachTheController:
             "If C-2087 covers P-2291, does any rule breach?")
         assert "needs the rules engine" in r.narrative
         assert r.confidence is Confidence.LOW, "a capability gap read as confident"
+
+
+class TestCertificationWindow:
+    """Q04 — the compliance listing. Tier 1 is the mandatory tier, and this is
+    the question that used to route correctly and then run nothing."""
+
+    def _expected(self):
+        import json
+        from pathlib import Path
+
+        path = Path("crew-ops-advisor-dataset/data/questions.json")
+        if not path.exists():
+            pytest.skip("dataset not vendored")
+        questions = json.loads(path.read_text())
+        return [q for q in questions if q["question_id"] == "Q04"][0]
+
+    def test_seed_builds_the_interval_the_answer_key_describes(self):
+        """The key says: valid_to between 2026-09-15 and 2026-10-15."""
+        calls = seed_calls(route(self._expected()["prompt"]))
+        assert [c.name for c in calls] == ["lookup"]
+        assert calls[0].args["filters"] == {
+            "valid_to": {"gte": "2026-09-15", "lte": "2026-10-15"}
+        }
+
+    def test_matches_the_answer_key_exactly(self):
+        question = self._expected()
+        rows = Advisor(port=PlaceholderToolPort(), llm=PlaceholderLLM()).ask(
+            question["prompt"])
+        returned = {
+            (r["crew_id"], r["cert_type"], str(r["valid_to"]))
+            for entry in rows.trace if entry.tool == "lookup"
+            for r in entry.result
+        }
+        assert returned == {
+            (r["crew_id"], r["cert_type"], r["valid_to"])
+            for r in question["expected_answer"]
+        }
+
+    def test_no_horizon_means_no_invented_window(self):
+        """A window nobody asked for silently changes who is on the list."""
+        calls = seed_calls(route("What certifications does C-1042 hold?"))
+        assert calls[0].args["filters"] == {"crew_id": "C-1042"}
+
+
+class TestFilterRanges:
+    def test_unknown_operator_is_rejected_not_ignored(self):
+        """A dropped bound widens the result set with nothing to notice it by."""
+        from agent.tools import ToolError, resolve_filters
+
+        with pytest.raises(ToolError, match="unknown filter operator"):
+            resolve_filters("certifications", {"valid_to": {"before": "2026-10-15"}},
+                            {"valid_to"})
+
+    def test_bounds_are_inclusive_both_ends(self):
+        from agent.tools import row_matches
+
+        want = {"gte": "2026-09-15", "lte": "2026-10-15"}
+        assert row_matches({"valid_to": "2026-09-15"}, "valid_to", want)
+        assert row_matches({"valid_to": "2026-10-15"}, "valid_to", want)
+        assert not row_matches({"valid_to": "2026-10-16"}, "valid_to", want)
+
+    def test_a_missing_column_does_not_satisfy_a_range(self):
+        from agent.tools import row_matches
+
+        assert not row_matches({}, "valid_to", {"lte": "2026-10-15"})
+
+    def test_list_valued_columns_are_containment(self):
+        """`ratings` holds a list; asking for A320 means "holds an A320 rating",
+        which equality answered as no-one. Postgres already did containment."""
+        from agent.tools import row_matches
+
+        assert row_matches({"ratings": ["A320", "ATR72"]}, "ratings", "A320")
+
+
+class TestNotification:
+    """Q36 — the callout message. The one place a model is the right tool for
+    the job, which is why every fact under it comes from the roster."""
+
+    def _brief(self):
+        return PlaceholderToolPort().notification_brief("C-3310", "P-2291")
+
+    def test_routes_away_from_cover(self):
+        """"Draft the callout notification" contains "callout", which is a
+        cover request in every other pattern in the table."""
+        r = route("Draft the callout notification to C-3310 for covering P-2291.")
+        assert r.intent is Intent.DRAFT_NOTIFICATION
+        assert seed_calls(r)[0].name == "notification_brief"
+
+    def test_times_come_from_the_roster(self):
+        brief = self._brief()
+        day1, day2 = brief["days"]
+        assert (day1["report_utc"], day1["report_station"]) == ("06:00Z", "BLR")
+        assert day1["flights"] == ["DX412", "DX413", "DX588"]
+        assert day1["overnight_station"] == "DEL"
+        assert (day2["report_utc"], day2["report_station"]) == ("04:00Z", "DEL")
+        assert day2["flights"] == ["DX589", "DX590", "DX591"]
+
+    def test_last_day_does_not_overnight(self):
+        """The crew go home. An overnight on the final day would book a hotel
+        nobody needs and tell the crew to stay put."""
+        assert self._brief()["days"][-1]["overnight_station"] is None
+
+    def test_acknowledgement_deadline_is_derived_from_reachability(self):
+        """06:00Z report, 45 minutes to reach the airport -> 05:15Z. The last
+        moment a "no" is still actionable, not a round number."""
+        brief = self._brief()
+        assert brief["reachability_minutes"] == 45
+        assert brief["acknowledge_by_utc"] == "05:15Z"
+
+    def test_covers_every_item_the_answer_key_requires(self):
+        from agent import notify
+
+        message = notify.render(self._brief())
+        for required in ("C-3310", "P-2291", "06:00Z", "BLR crew room",
+                         "DX412/DX413/DX588", "DEL", "04:00Z",
+                         "DX589/DX590/DX591", "acknowledge", "Crew Control"):
+            assert required in message, required
+
+    def test_invents_no_contact_details(self):
+        """A plausible-looking phone number is exactly the kind of invention
+        this system exists not to make; the dataset has none."""
+        import re
+
+        from agent import notify
+
+        message = notify.render(self._brief())
+        assert not re.search(r"\+?\d[\d\s-]{7,}", message)
+
+    def test_message_is_verifiable_against_its_own_brief(self):
+        from agent.schemas import AdvisorResponse, NotificationAnswer, Tier, TraceEntry
+        from agent.verifier import verify
+
+        brief = self._brief()
+        response = AdvisorResponse(
+            tier=Tier.CONSEQUENCE, intent=Intent.DRAFT_NOTIFICATION,
+            answer=NotificationAnswer(brief=brief),
+            trace=[TraceEntry(tool="notification_brief", result=brief)],
+        )
+        from agent import explainer
+
+        assert verify(explainer.render(response), response.trace).ok
+
+    def test_unknown_pairing_is_refused_not_improvised(self):
+        from agent.tools import ToolError
+
+        with pytest.raises(ToolError, match="P-9999"):
+            PlaceholderToolPort().notification_brief("C-3310", "P-9999")
+
+
+class TestLookupTable:
+    """Tier 1 is the mandatory tier and the first thing anyone will type at
+    this. It is worth reading well."""
+
+    def _answer(self, rows):
+        from agent.schemas import AdvisorResponse, LookupAnswer, Tier, TraceEntry
+
+        return AdvisorResponse(
+            tier=Tier.LOOKUP, intent=Intent.LOOKUP_CREW,
+            answer=LookupAnswer(rows=rows),
+            trace=[TraceEntry(tool="lookup", result=rows)],
+        )
+
+    def test_columns_align_across_rows(self):
+        from agent import explainer
+
+        out = explainer.render(self._answer([
+            {"crew_id": "C-1", "rank": "Captain"},
+            {"crew_id": "C-1042", "rank": "First Officer"},
+        ]))
+        body = [ln for ln in out.splitlines() if "C-1" in ln]
+        assert len({ln.index("C-1") for ln in body}) == 1, "ragged left edge"
+        starts = {body[0].index("Captain"), body[1].index("First Officer")}
+        assert len(starts) == 1, "ragged second column"
+
+    def test_a_column_missing_from_the_first_row_still_appears(self):
+        """Backends differ in which optional fields they populate. A column
+        dropped because row one lacked it is a fact withheld."""
+        from agent import explainer
+
+        out = explainer.render(self._answer([{"crew_id": "C-1"},
+                                             {"crew_id": "C-2", "base": "BLR"}]))
+        assert "base" in out and "BLR" in out
+
+    def test_identity_columns_come_first(self):
+        from agent import explainer
+
+        out = explainer.render(self._answer([{"seniority": 14, "crew_id": "C-1042"}]))
+        header = [ln for ln in out.splitlines() if "crew_id" in ln][0]
+        assert header.index("crew_id") < header.index("seniority")
+
+    def test_a_wide_constant_column_is_stated_once_not_repeated(self):
+        """reserve_pool.dates is the same 82 characters on every row, which
+        pushed the on-call windows off the side of the screen."""
+        from agent import explainer
+
+        dates = ["2026-09-%02d" % d for d in range(14, 21)]
+        out = explainer.render(self._answer([
+            {"crew_id": "C-1", "dates": dates, "oncall_start_utc": "04:00"},
+            {"crew_id": "C-2", "dates": dates, "oncall_start_utc": "06:00"},
+        ]))
+        assert out.count("2026-09-14") == 1, "repeated on every row"
+        assert "every row — dates" in out, "stated, not silently dropped"
+        assert "04:00" in out and "06:00" in out
+
+    def test_values_are_never_truncated(self):
+        """A shortened id reads as a different id, and the verifier would
+        rightly refuse to source it."""
+        from agent import explainer
+        from agent.verifier import verify
+
+        response = self._answer([{"flight_id": "DX412-2026-09-15"}])
+        out = explainer.render(response)
+        assert "DX412-2026-09-15" in out
+        assert verify(out, response.trace).ok
+
+
+class TestDataCoverage:
+    """Fields the dataset provides and the advisor was quietly ignoring."""
+
+    def test_options_name_the_person_not_just_the_id(self):
+        """A controller phones a human being at 05:00."""
+        port = PlaceholderToolPort()
+        crew = port.lookup("crew", {"crew_id": "C-3310"})[0]
+        assert crew["name"] == "D. Reddy"
+        from agent.schemas import Option
+
+        option = Option(action=f"Assign Captain {crew['name']} (C-3310)",
+                        crew_id="C-3310", legal=True, name=crew["name"])
+        assert crew["name"] in option.action
+
+    def test_reserves_carry_rank_and_name(self):
+        """Q01's answer key gives a rank for every reserve, and reserve_pool
+        holds only an id and a window."""
+        rows = PlaceholderToolPort().lookup("reserves", {"base": "BLR"})
+        by_id = {r["crew_id"]: r for r in rows}
+        assert by_id["C-3305"]["rank"] == "Captain"
+        assert by_id["C-3305"]["name"]
+        assert len(rows) == 12, "Q01 expects all twelve BLR reserves"
+
+    def test_risk_signals_are_reachable(self):
+        """Q16 asks for the score and its drivers. It used to run no tool."""
+        r = route("What is the disruption-risk score for C-1042 and what drives it?")
+        assert r.intent is Intent.LOOKUP_RISK
+        rows = PlaceholderToolPort().lookup("risk_signals", {"crew_id": "C-1042"})
+        assert rows[0]["disruption_risk_score"] == 0.78
+        assert rows[0]["drivers"]
+
+    def test_risk_never_reorders_options(self):
+        """dCortex provides these and says teams do not model them. A risk
+        score is not a rule; letting one move a legal option up the ranking
+        would be the prediction we were told not to build."""
+        import inspect
+
+        from core import port as core_port
+
+        source = inspect.getsource(core_port.CoreToolPort.find_options)
+        ranking = [ln for ln in source.splitlines() if ".sort(" in ln]
+        assert ranking and not any("risk" in ln for ln in ranking)
+
+    def test_pairing_crew_is_an_entity_on_both_backends(self):
+        """Postgres normalises it into a table and the JSON nests it. A seed
+        call must not have to know which backend is live."""
+        rows = PlaceholderToolPort().lookup("pairing_crew", {"pairing_id": "P-2291"})
+        assert {r["role"] for r in rows} >= {"Captain", "First Officer"}
+        assert len(rows) == 6
+
+    def test_plural_ranks_are_recognised(self):
+        """"Which Captains are based at BLR" matched no role at all, so the
+        filter was dropped and the answer was every crew member at BLR."""
+        from agent.entities import extract
+
+        assert extract("Which Captains are based at BLR?").roles == ["Captain"]
+        assert extract("list the first officers").roles == ["First Officer"]
+
+    def test_counting_flights_is_not_a_crew_question(self):
+        """"how many" alone routed to crew and answered with all 150 of them.
+        A confident wrong table is worse than an empty one."""
+        assert route("How many flights operate on 2026-09-16 in total?").intent \
+            is Intent.LOOKUP_FLIGHT
+        assert route("How many captains are based at DEL?").intent is Intent.LOOKUP_CREW
+
+    def test_one_table_per_row_shape(self):
+        """A roster lookup returning crew and duty days rendered six names
+        against two dates with nothing lining up."""
+        from agent import explainer
+        from agent.schemas import AdvisorResponse, LookupAnswer, Tier, TraceEntry
+
+        rows = [{"crew_id": "C-1", "role": "Captain"}, {"date": "2026-09-15"}]
+        out = explainer.render(AdvisorResponse(
+            tier=Tier.LOOKUP, intent=Intent.LOOKUP_ROSTER,
+            answer=LookupAnswer(rows=rows),
+            trace=[TraceEntry(tool="lookup", result=rows)]))
+        rules = [ln for ln in out.splitlines() if set(ln.strip()) == {"─"} or
+                 (ln.strip() and set(ln.strip()) <= {"─", " "})]
+        assert len(rules) == 2, "shapes merged into one ragged table"
+        assert "crew_id  role" in out and "date" in out
+
+
+class TestOneNamingRule:
+    """How a person is written is a property of the system, not something
+    asked for per call. One wording, three prompts."""
+
+    def test_the_rule_is_in_the_system_prompt(self):
+        from agent.prompts import system_prompt
+
+        assert "Rank Name (C-XXXX)" in system_prompt()
+
+    def test_both_explainer_passes_quote_it_rather_than_restate_it(self):
+        from agent import explainer
+        from agent.prompts import naming_rule
+
+        rule = naming_rule()
+        assert rule
+        assert rule in explainer.LOOKUP_INSTRUCTIONS
+        assert rule in explainer.POLISH_INSTRUCTIONS
+
+    def test_editing_system_md_changes_every_prompt(self):
+        """If these could drift, two of them would eventually be wrong."""
+        from agent import explainer
+        from agent.prompts import naming_rule, system_prompt
+
+        rule = naming_rule()
+        assert rule in system_prompt()
+        assert sum(rule in text for text in (
+            system_prompt(), explainer.LOOKUP_INSTRUCTIONS,
+            explainer.POLISH_INSTRUCTIONS)) == 3
+
+    def test_the_rule_covers_both_halves_and_the_fallback(self):
+        from agent.prompts import naming_rule
+
+        rule = naming_rule()
+        assert "bare id" in rule, "must say why an id alone is not an answer"
+        assert "never invent" in rule.lower(), "must forbid inventing a name"
+        assert "gender" in rule

@@ -276,7 +276,7 @@ agent/
 ├── prompts/
 │   ├── __init__.py   assembly + per-intent guidance
 │   └── system.md     role, rulebook, rate card, house style
-└── tests/            300 tests across the repo
+└── tests/             334 tests across the repo
 ```
 
 ## 9. Design rules for anyone editing this

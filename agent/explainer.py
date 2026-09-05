@@ -17,13 +17,15 @@ import datetime as dt
 from decimal import Decimal
 from typing import Any
 
-from agent import config
+from agent import config, prompts
 from agent.llm import LLM
 from agent.schemas import (
     AdvisorResponse,
+    Intent,
     Citation,
     ConsequenceAnswer,
     LookupAnswer,
+    NotificationAnswer,
     Option,
     ReplacementAnswer,
     RuleVerdict,
@@ -31,8 +33,14 @@ from agent.schemas import (
 )
 
 
-ROW_LIMIT = 10
-"""Rows shown before a lookup listing is truncated."""
+ROW_LIMIT = 25
+"""Rows shown before a lookup listing is truncated.
+
+Ten cut Q01 short: BLR carries twelve reserves and the answer key lists all
+twelve, so the correct answer was being truncated into an incomplete one.
+Twenty-five clears every tier-1 gold answer with room over, and a table that
+long is still quicker to read than the paragraph it replaced.
+"""
 
 
 def fmt_value(value: Any) -> str:
@@ -52,6 +60,21 @@ def fmt_value(value: Any) -> str:
     if isinstance(value, dict):
         return " ".join(f"{k}={fmt_value(v)}" for k, v in value.items())
     return str(value)
+
+
+def who(crew_id: str | None, name: str | None = None,
+        rank: str | None = None) -> str:
+    """How a crew member is written, everywhere, without exception.
+
+    `Captain A. Nair (C-1042)` — the person first, because that is who the
+    controller phones, and the id in brackets because that is what goes into
+    the roster system and two people can share a surname. Falling back to the
+    bare id when no name is loaded is correct; inventing one is not.
+    """
+    if not crew_id:
+        return ""
+    label = " ".join(str(part) for part in (rank, name) if part)
+    return f"{label} ({crew_id})" if label else crew_id
 
 
 def _inr(amount: int) -> str:
@@ -99,6 +122,9 @@ def render_option(option: Option, show_rank: bool = True) -> str:
     prefix = f"#{option.rank} " if show_rank and option.rank else ""
     parts = [f"{prefix}{option.action}", _inr(option.cost_inr)]
 
+    if option.reachability_minutes is not None:
+        parts.append(f"reachable in {option.reachability_minutes} min")
+
     if option.delay_hours:
         parts.append(f"{_hours(option.delay_hours)} delay")
     if option.blast_radius:
@@ -117,13 +143,68 @@ def render_option(option: Option, show_rank: bool = True) -> str:
 # --------------------------------------------------------------------------
 
 
+# Columns a controller reads first. Anything not named here keeps its natural
+# order behind these — a stable left edge is what makes a table scannable when
+# you are reading it for the third time in ten minutes.
+_COLUMN_ORDER: tuple[str, ...] = (
+    "crew_id", "name", "rank", "role", "base",
+    "flight_id", "flight_no", "pairing_id", "aircraft", "aircraft_type",
+    "date", "dep_station", "arr_station", "dep_utc", "arr_utc",
+    "oncall_start_utc", "oncall_end_utc", "report_utc", "release_utc",
+    "cert_type", "valid_from", "valid_to",
+)
+
+
+def _columns(rows: list[dict[str, Any]]) -> list[str]:
+    """Union of the rows' keys, preferred columns first.
+
+    A union rather than the first row's keys: backends differ in which
+    optional fields they populate, and a column silently missing because row
+    one happened to lack it is a fact withheld from the controller.
+    """
+    seen: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in seen:
+                seen.append(key)
+    ranked = [c for c in _COLUMN_ORDER if c in seen]
+    return ranked + [c for c in seen if c not in ranked]
+
+
 def render_lookup(answer: LookupAnswer) -> str:
+    """A tier-1 result as an aligned table.
+
+    This is the tier a controller reaches first and the one dCortex makes
+    mandatory, so it is worth reading well. `key=value · key=value` repeated
+    the column name on every row and put the values at a different offset in
+    each one, which is unscannable at exactly the moment scanning matters.
+
+    Values are never truncated. A shortened id reads as a different id, and
+    the verifier would rightly refuse to source it.
+    """
     if not answer.rows:
         return "No records match that query."
+
     noun = "record" if answer.count == 1 else "records"
+    shown = answer.rows[:ROW_LIMIT]
+
+    # Rows of different shapes are different questions, and interleaving them
+    # produces a table that is mostly blank cells — a roster lookup returning
+    # crew *and* duty days rendered six names against two dates with nothing
+    # lining up. Group by shape and give each its own table.
+    groups: list[list[dict[str, Any]]] = []
+    signatures: list[tuple[str, ...]] = []
+    for row in shown:
+        signature = tuple(sorted(row))
+        if signature in signatures:
+            groups[signatures.index(signature)].append(row)
+        else:
+            signatures.append(signature)
+            groups.append([row])
+
     lines = [f"{answer.count} {noun}."]
-    for row in answer.rows[:ROW_LIMIT]:
-        lines.append("  " + " · ".join(f"{k}={fmt_value(v)}" for k, v in row.items()))
+    for group in groups:
+        lines.extend(_table(group))
     if answer.count > ROW_LIMIT:
         # No number here on purpose. "and N more" is arithmetic the renderer
         # did itself, and even a literal page size is a figure no tool
@@ -131,6 +212,35 @@ def render_lookup(answer: LookupAnswer) -> str:
         # sourced: it is the length of the tool's own result.
         lines.append("  (list truncated)")
     return "\n".join(lines)
+
+
+def _table(shown: list[dict[str, Any]]) -> list[str]:
+    """One aligned table for one set of same-shaped rows."""
+    columns = _columns(shown)
+
+    # A column holding one value across every row discriminates nothing here,
+    # and `dates` on the reserve pool is 82 characters of it — enough to push
+    # the on-call windows off the side of the screen. State it once above the
+    # table instead. Stated, not dropped: the value is still on the page.
+    constant: list[str] = []
+    if len(shown) > 1:
+        for column in list(columns):
+            values = {fmt_value(row.get(column, "")) for row in shown}
+            if len(values) == 1 and len(next(iter(values))) > 20:
+                constant.append(f"{column}: {values.pop()}")
+                columns.remove(column)
+
+    cells = [[fmt_value(row.get(c, "")) for c in columns] for row in shown]
+    widths = [max(len(c), *(len(r[i]) for r in cells)) for i, c in enumerate(columns)]
+
+    def line(values: list[str]) -> str:
+        padded = [v.ljust(w) for v, w in zip(values, widths)]
+        return "  " + "  ".join(padded).rstrip()
+
+    lines = [f"  every row — {c}" for c in constant]
+    lines += ["", line(columns), "  " + "  ".join("─" * w for w in widths)]
+    lines += [line(row) for row in cells]
+    return lines
 
 
 def render_replacement(answer: ReplacementAnswer) -> str:
@@ -142,7 +252,8 @@ def render_replacement(answer: ReplacementAnswer) -> str:
     lines: list[str] = []
 
     if answer.verdicts:
-        subject = answer.subject or "That assignment"
+        subject = who(answer.subject, answer.subject_name,
+                      answer.subject_rank) or "That assignment"
         blocking = [v for v in answer.verdicts if v.failed]
         if blocking:
             lines.append(f"▸ {subject} would breach "
@@ -322,6 +433,10 @@ def render(response: AdvisorResponse) -> str:
             body = render_replacement(a)
         case ConsequenceAnswer() as a:
             body = render_consequence(a)
+        case NotificationAnswer() as a:
+            # Already prose, and every time in it came from the roster. There
+            # is nothing for a second renderer to add.
+            body = a.message
         case _:
             body = ""
 
@@ -368,7 +483,33 @@ def collect_citations(response: AdvisorResponse) -> list[Citation]:
 # Optional model pass
 # --------------------------------------------------------------------------
 
-POLISH_INSTRUCTIONS = """\
+# Both passes below append `prompts.naming_rule()` rather than restating it.
+# How a person is written is one rule for the whole system — it lives in
+# `prompts/system.md`, the tool-loop model reads it there, and these two get
+# the same words so the three cannot drift apart.
+
+_LOOKUP_INSTRUCTIONS = """\
+You are answering an airline crew controller's factual question.
+
+Below is a question and the rows the tools returned for it. Answer the
+question in one short paragraph, in plain language, using only those rows.
+
+Rules, in order of importance:
+
+1. Every name, id, number, date and status you write must appear in the rows.
+   Invent nothing. If the rows do not answer part of the question, say that
+   part is not in the data.
+2. Do NOT recommend anything, do NOT infer a situation, do NOT describe a
+   problem. Nothing here is a disruption; it is a record. "Reduce their duty
+   hours" is not an answer to "who is this".
+3. Name people exactly as the rule at the end of this message says.
+4. Lead with what was asked. Mention what a controller would want next only
+   if it is in the rows — current pairing, duty headroom, anything expiring.
+5. No preamble, no "based on the data provided". Two to five sentences.
+"""
+
+
+_POLISH_INSTRUCTIONS = """\
 You are writing for an airline crew controller under time pressure.
 
 Rewrite the structured summary below as you would say it to them: lead with
@@ -381,23 +522,63 @@ missing, leave it missing — a verifier will reject this answer otherwise.
 """
 
 
+def _with_naming(instructions: str) -> str:
+    return f"{instructions.rstrip()}\n\n{prompts.naming_rule()}\n"
+
+
+LOOKUP_INSTRUCTIONS = _with_naming(_LOOKUP_INSTRUCTIONS)
+POLISH_INSTRUCTIONS = _with_naming(_POLISH_INSTRUCTIONS)
+
+
 def polish(response: AdvisorResponse, llm: LLM | None = None) -> str:
     """Rewrite template output into controller language.
 
     Falls back to the template verbatim when no model is configured, which is
     the current default — the placeholder client returns no usable prose.
 
-    **Tier 1 is never polished.** A lookup answer is already complete and
-    correct; there is no trade-off to explain, so the model can only add risk.
-    Asked "what does RULE-DUTY-02 say?", llama3.1:8b produced "Recommendation:
-    reduce the crew's duty hours — the crew has exceeded the maximum allowed"
-    — an entire fabricated situation, with no crew and nothing exceeded. The
-    verifier passed it, because the invention was narrative rather than
-    numeric and cited nothing checkable. See agent/README.md §6.
+    Tier 1 gets its own instructions rather than the recommendation ones, and
+    keeps its tables underneath the prose.
+
+    It used to get no model pass at all. That was right when a lookup meant
+    one small table and the model was llama3.1:8b — asked "what does
+    RULE-DUTY-02 say?" it produced "Recommendation: reduce the crew's duty
+    hours — the crew has exceeded the maximum allowed", an entire fabricated
+    situation with no crew and nothing exceeded, and the verifier passed it
+    because the invention was narrative rather than numeric.
+
+    What changed is the question. "Who is C-1042" now fans out to nine tool
+    calls across seven entities, and the template answers it with "16
+    records." followed by seven tables — every fact present and the question
+    unanswered. A controller cannot read that at 05:00.
+
+    So the ban is replaced by four narrower defences, because the risk it was
+    guarding against is real: LOOKUP_INSTRUCTIONS forbids recommending or
+    inferring a situation, the tables stay below the prose as evidence, an
+    answer carrying no rows is still never polished, and EXPLAIN_RULE — the
+    shape that produced that fabrication — is still never polished either.
     """
     template = render(response)
-    if llm is None or isinstance(response.answer, LookupAnswer):
+    if llm is None:
         return template
+
+    if isinstance(response.answer, LookupAnswer):
+        # Two lookups still get no model pass. An empty one has only the
+        # tools' own error text to offer, and EXPLAIN_RULE is the exact shape
+        # that produced the llama3.1 fabrication above: the rule text *is* the
+        # answer, so summarising it can only drift from the regulation.
+        if not response.answer.rows or response.intent is Intent.EXPLAIN_RULE:
+            return template
+        result = llm.complete(
+            system=LOOKUP_INSTRUCTIONS,
+            messages=[{"role": "user", "content":
+                       f"Question: {response.query}\n\n{template}"}],
+            model=config.EXPLAINER_MODEL,
+            max_tokens=512,
+        )
+        text = (result.text or "").strip()
+        if not text or text.startswith("[placeholder]"):
+            return template
+        return f"{text}\n\n{template}"
 
     # Never paraphrase a tool failure. The error text is already written for a
     # controller and often carries the only actionable content — "there is no
