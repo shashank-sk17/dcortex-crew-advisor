@@ -59,8 +59,12 @@ export class ConversationStore {
     this.run(prompt, () => this.advisor.runScenario(scenarioId, prompt, this.opts()));
   }
 
+  /** Clears the local thread and, best-effort, the real advisor's shared
+   * server-side conversation — see AdvisorService.reset() for why that
+   * matters beyond just tidying the UI. */
   reset(): void {
     this._turns.set([]);
+    this.advisor.reset();
   }
 
   private opts(): AskOptions {

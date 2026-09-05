@@ -28,7 +28,7 @@ export class EvidenceRailComponent {
 
   readonly funnel = computed(() => {
     const a = this.store.lastAssistant()?.answer;
-    return a?.kind === 'replacement' ? (a as ReplacementAnswer).funnel : [];
+    return a?.kind === 'replacement' ? ((a as ReplacementAnswer).funnel ?? []) : [];
   });
 
   readonly ruleChecks = computed(() => this.store.lastAssistant()?.ruleChecks ?? []);
@@ -40,8 +40,8 @@ export class EvidenceRailComponent {
 
   readonly baseOptions = computed<Option[]>(() => {
     const a = this.store.lastAssistant()?.answer;
-    if (a?.kind === 'consequence') return (a as ConsequenceAnswer).options;
-    if (a?.kind === 'replacement') return (a as ReplacementAnswer).options;
+    if (a?.kind === 'consequence') return (a as ConsequenceAnswer).options ?? [];
+    if (a?.kind === 'replacement') return (a as ReplacementAnswer).options ?? [];
     return [];
   });
 

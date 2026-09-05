@@ -31,8 +31,12 @@ export function reduceTurn(turn: AssistantTurn, ev: AgentEvent): AssistantTurn {
       return { ...turn, status: null, prose: turn.prose + ev.text };
 
     case 'answer':
+      // Clear the waiting text here, not only on `done` — an answer that has
+      // arrived must never still read as "still working", whatever happens to
+      // the terminal event.
       return {
         ...turn,
+        status: null,
         tier: ev.tier,
         intent: ev.intent,
         entities: ev.entities ?? {},

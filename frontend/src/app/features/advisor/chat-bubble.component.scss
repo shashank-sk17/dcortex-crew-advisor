@@ -24,6 +24,8 @@
   background: transparent; border: 1px solid var(--line); color: var(--fg-2);
   border-radius: 6px; padding: 0 8px;
 }
+.panel__head .reset-btn { padding: 5px 10px; font-size: 12.5px; }
+.panel__head .reset-btn:disabled { opacity: .5; cursor: default; }
 
 .panel__body { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
 .panel__chat { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }

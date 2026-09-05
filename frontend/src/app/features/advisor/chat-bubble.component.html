@@ -4,6 +4,10 @@
       <span>Advisor</span>
       @if (store.busy()) { <span class="chip chip--warn">thinking…</span> }
       <span class="spacer"></span>
+      @if (!store.isEmpty()) {
+        <button class="ghost reset-btn" type="button" [disabled]="store.busy()" (click)="store.reset()"
+                title="Clear this conversation — also resets the advisor's own memory of it">New chat</button>
+      }
       <button class="ghost" (click)="bus.toggle()">–</button>
     </header>
     <div class="panel__body">

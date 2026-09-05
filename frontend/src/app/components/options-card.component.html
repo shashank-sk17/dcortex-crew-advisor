@@ -61,8 +61,18 @@
         <div class="excl__row">
           <span class="chip mono">{{ x.crew_id }}</span>
           <div class="excl__verdicts">
-            @for (v of x.verdicts; track v.rule_id + v.detail) {
-              <div class="excl__v"><span class="chip chip--fail mono">{{ v.rule_id }}</span> {{ v.detail }}</div>
+            <!-- The rules engine sends `reason` + `rules`; the fixtures send full
+                 `verdicts`. Render whichever arrived — an unguarded @for over the
+                 missing one throws mid-render and freezes the whole turn. -->
+            @if (x.verdicts?.length) {
+              @for (v of x.verdicts ?? []; track v.rule_id + v.detail) {
+                <div class="excl__v"><span class="chip chip--fail mono">{{ v.rule_id }}</span> {{ v.detail }}</div>
+              }
+            } @else {
+              <div class="excl__v">
+                @for (r of x.rules ?? []; track r) { <span class="chip chip--fail mono">{{ r }}</span> }
+                {{ x.reason }}
+              </div>
             }
           </div>
         </div>

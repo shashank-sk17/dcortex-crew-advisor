@@ -4,11 +4,11 @@
     <strong>I can't answer that reliably</strong>
   </div>
   <p class="abstain__reason">{{ data.reason }}</p>
-  @if (data.needed.length) {
+  @if (data.needed?.length) {
     <div class="abstain__needed">
       <span class="muted">Would need:</span>
       <ul>
-        @for (n of data.needed; track n) { <li>{{ n }}</li> }
+        @for (n of data.needed ?? []; track n) { <li>{{ n }}</li> }
       </ul>
     </div>
   }
