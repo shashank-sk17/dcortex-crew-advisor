@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { ExcludedCandidate, Option } from '../models/agent-events';
-import { IconComponent } from './icon.component';
 
 /**
  * Ranked resolution options with cost breakdown, plus near-misses (one lever from
@@ -14,7 +13,7 @@ import { IconComponent } from './icon.component';
 @Component({
   selector: 'app-options-card',
   standalone: true,
-  imports: [IconComponent, DecimalPipe],
+  imports: [DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './options-card.component.html',
   styleUrl: './options-card.component.scss',

@@ -11,41 +11,25 @@
 .pill[data-rank="critical"].on { border-color: var(--fail); color: var(--fail); }
 .pill[data-rank="high"].on { border-color: var(--warn); color: var(--warn); }
 
-.tbl {
-  border: var(--rule-w) solid var(--hairline); border-radius: var(--radius);
-  overflow-x: auto; background: var(--ground-1); box-shadow: var(--shadow-card);
-}
+.tbl { border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
 .tr {
-  display: grid; grid-template-columns: 70px 88px minmax(150px, 1fr) 146px 84px 62px 52px; gap: 10px;
-  align-items: center; width: 100%; min-width: 680px; text-align: left; padding: 11px 12px;
-  background: var(--ground-1); border: none; border-bottom: var(--rule-w) solid var(--hairline);
-  color: var(--ink-1); font-size: 14px;
+  display: grid; grid-template-columns: 26px 74px minmax(160px, 1fr) 150px 78px 58px 48px; gap: 8px;
+  align-items: center; width: 100%; min-width: 640px; text-align: left; padding: 9px 10px;
+  background: var(--surface-1); border: none; border-bottom: 1px solid var(--line);
+  color: var(--fg-1); font-size: 13.5px;
 }
-.tr:last-child { border-bottom: 0; }
+.tr.th { background: var(--surface-2); color: var(--fg-3); text-transform: uppercase; font-size: 11px; }
+.tr:hover:not(.th) { background: var(--surface-2); }
+.tr.sel { background: var(--accent-bg); }
+.tr[data-rank="critical"] { box-shadow: inset 3px 0 0 var(--fail); }
+.tr[data-rank="high"] { box-shadow: inset 3px 0 0 var(--warn); }
+.tr[data-rank="medium"] { box-shadow: inset 3px 0 0 var(--fg-3); }
 
-/* Column headings sit above the data as a legend for it, not as a band of
-   chrome — hairline-separated, uppercase micro, same grid. */
-.tr.th {
-  background: transparent; color: var(--ink-2); text-transform: uppercase;
-  font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
-  padding-top: 8px; padding-bottom: 8px;
-  border-bottom-color: var(--hairline-strong);
-}
-.tr:hover:not(.th) { background: var(--ground-2); }
-.tr.sel { background: var(--ref-bg); }
-
-/* Rank is a fill plus a word. The fill is the scan; the word is what survives
-   greyscale, a projector, and a colour-blind controller. */
-.tr[data-rank="critical"]:not(.sel) { background: var(--breach-bg); }
-.tr[data-rank="high"]:not(.sel)     { background: var(--near-bg); }
-
-/* the flight number carries the row — cockpit face, tabular, at real size */
-.tr__no {
-  font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-size: 16px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink);
-}
-.tr__route { font-weight: 600; color: var(--ink-1); }
-.tr__arrow { color: var(--ink-2); margin: 0 3px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--fg-3); }
+.dot[data-rank="critical"] { background: var(--fail); }
+.dot[data-rank="high"] { background: var(--warn); }
+.dot[data-rank="medium"] { background: var(--accent); }
+.dot[data-rank="low"] { background: var(--pass); }
 
 .sm { font-size: 12.5px; }
 .lg { font-size: 17px; }
@@ -82,10 +66,8 @@
 
 .drawer__cta { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .ask {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: 100%; font-size: 13.5px; font-weight: 700; letter-spacing: 0.02em;
+  display: block; width: 100%; font-size: 13.5px; font-weight: 700; letter-spacing: 0.02em;
   padding: 10px 12px; text-align: center; border-radius: var(--radius-sm);
   border: var(--rule-w) solid var(--accent-line); background: var(--accent); color: #fff;
 }
-.ask app-icon { font-size: 16px; }
 .ask:hover { background: color-mix(in oklab, var(--accent) 88%, black); }

@@ -1,50 +1,19 @@
 .cockpit { display: flex; flex-direction: column; height: 100vh; }
 
 .topbar {
-  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-  padding: 10px 16px; background: var(--ground-1);
-  border-bottom: var(--rule-w) solid var(--hairline-strong);
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface-1);
 }
-
-/* the masthead reads as a nameplate: the product leads, the company sits under
-   it at label scale — one lockup rather than two words joined by a dot */
-.brand {
-  display: flex; flex-direction: column; gap: 1px;
-  text-decoration: none; color: inherit; padding-right: 4px;
-}
-.brand__name {
-  font-size: 17px; font-weight: 800; letter-spacing: -0.025em; color: var(--ink); line-height: 1.05;
-}
-.brand__org {
-  font-family: var(--mono); font-size: 10px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: .16em; color: var(--ink-2); line-height: 1;
-}
-
+.brand { font-weight: 700; }
 .nav { display: flex; gap: 4px; }
-.nav a {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 12px; border-radius: var(--radius-sm);
-  color: var(--ink-2); text-decoration: none; font-size: 13.5px; font-weight: 600;
-}
-.nav a app-icon { font-size: 16px; }
-.nav a:hover { background: var(--ground-2); color: var(--ink-1); }
-.nav a.on { background: var(--ref-bg); color: var(--ref); }
-
+.nav a { padding: 5px 10px; border-radius: 6px; color: var(--fg-2); text-decoration: none; font-size: 13px; }
+.nav a.on { background: var(--accent-bg); color: var(--accent); }
 .spacer { flex: 1; }
-
-/* the working date is an operational reading, not a form field */
-.date {
-  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em;
-  color: var(--ink-2); display: flex; gap: 8px; align-items: center;
-}
+.date { font-size: 12px; color: var(--fg-2); display: flex; gap: 6px; align-items: center; }
 .date select, .date input[type="date"] {
-  background: var(--ground); color: var(--ink);
-  font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-size: 13px; font-weight: 700; letter-spacing: -0.01em;
-  border: var(--rule-w) solid var(--hairline-strong); border-radius: var(--radius-sm);
-  padding: 5px 9px;
+  background: var(--surface-0); color: var(--fg-0);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit;
 }
-.date select:hover, .date input[type="date"]:hover { border-color: var(--ref-line); }
 
 .body {
   flex: 1; display: grid; grid-template-columns: 260px 1fr 340px; min-height: 0;
@@ -68,13 +37,13 @@
   width: 28px; height: 28px; border-radius: 50%;
   display: grid; place-items: center;
   background: var(--ground-2); border: 1.5px solid var(--hairline-strong);
-  color: var(--ink-1); font-size: 15px;
+  color: var(--ink-1); font-size: 16px; font-weight: 700;
   box-shadow: 0 2px 6px rgba(7, 9, 11, .12);
 }
 .rail-tab:hover { background: var(--ref-bg); border-color: var(--ref-line); color: var(--ref); }
 .rail-tab--left { right: 8px; }
 .rail-tab--right { left: 8px; }
-.rail-tab__chev { display: inline-grid; place-items: center; transition: transform 180ms ease; }
+.rail-tab__chev { display: inline-block; transition: transform 180ms ease; }
 .rail-tab__chev.flip { transform: rotate(180deg); }
 
 .rail-label {

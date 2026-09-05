@@ -6,7 +6,6 @@ import { AppState } from '../../core/app-state';
 import { AdvisorBus } from '../advisor/advisor-bus';
 import { Alert } from '../../core/api.types';
 import { AccordionItemComponent } from '../../components/accordion-item.component';
-import { IconComponent } from '../../components/icon.component';
 
 type Sev = 'critical' | 'warning' | 'info';
 
@@ -19,7 +18,7 @@ type Sev = 'critical' | 'warning' | 'info';
 @Component({
   selector: 'app-alerts-panel',
   standalone: true,
-  imports: [IconComponent, AccordionItemComponent, NgTemplateOutlet],
+  imports: [AccordionItemComponent, NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './alerts-panel.component.html',
   styleUrl: './alerts-panel.component.scss',

@@ -1,16 +1,12 @@
 <div class="ap">
-  <div class="readout">
-    <div class="readout__cell">
-      <span class="readout__fig" [class.readout__fig--fail]="critical().length > 0">{{ critical().length }}</span>
-      <span class="readout__lab">critical</span>
+  <div class="ap__hero">
+    <div class="ap__hero-stat ap__hero-stat--fail">
+      <span class="focus-stat focus-stat--fail">{{ critical().length }}</span>
+      <span class="ap__hero-label">critical</span>
     </div>
-    <div class="readout__cell">
-      <span class="readout__fig" [class.readout__fig--warn]="warning().length > 0">{{ warning().length }}</span>
-      <span class="readout__lab">warning</span>
-    </div>
-    <div class="readout__cell">
-      <span class="readout__fig">{{ info().length }}</span>
-      <span class="readout__lab">info</span>
+    <div class="ap__hero-stat ap__hero-stat--warn">
+      <span class="focus-stat focus-stat--warn">{{ warning().length }}</span>
+      <span class="ap__hero-label">warning</span>
     </div>
   </div>
 
@@ -36,26 +32,16 @@
 
 <ng-template #row let-a>
   <div class="al" [attr.data-sev]="a.severity">
-    <div class="al__head">
-      <span class="token" [attr.data-legend]="a.severity === 'critical' ? 'breach' : a.severity === 'warning' ? 'near' : 'ref'">
-        <app-icon [name]="a.severity === 'critical' ? 'breach' : a.severity === 'warning' ? 'alert' : 'clock'" />
-        {{ a.severity }}
-      </span>
-    </div>
     <div class="al__title">{{ a.title }}</div>
     <div class="al__detail">{{ a.detail }}</div>
     <div class="al__actions">
       @if (a.suggested_action?.ask_prompt) {
-        <button (click)="ask(a.suggested_action!.ask_prompt!)">
-          <app-icon name="advisor" /> {{ a.suggested_action!.label }}
-        </button>
+        <button (click)="ask(a.suggested_action!.ask_prompt!)">{{ a.suggested_action!.label }}</button>
       } @else if (a.suggested_action?.deep_link) {
-        <button (click)="go(a.suggested_action!.deep_link!)">
-          <app-icon name="arrow" /> {{ a.suggested_action!.label }}
-        </button>
+        <button (click)="go(a.suggested_action!.deep_link!)">{{ a.suggested_action!.label }}</button>
       }
-      <button class="ghost" (click)="ack(a)"><app-icon name="check" /> Ack</button>
-      <button class="ghost" (click)="resolve(a)"><app-icon name="close" /> Resolve</button>
+      <button class="ghost" (click)="ack(a)">Ack</button>
+      <button class="ghost" (click)="resolve(a)">Resolve</button>
     </div>
   </div>
 </ng-template>
