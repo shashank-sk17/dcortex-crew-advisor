@@ -1,11 +1,23 @@
 <div class="sb">
   @if (summary(); as s) {
-    <a class="sb__hero" routerLink="/crew" [queryParams]="{ filter: 'needs_attention' }">
-      <span class="focus-stat" [class.focus-stat--warn]="s.crew.needs_attention > 0">{{ s.crew.needs_attention }}</span>
-      <span class="sb__hero-label">crew(s) need attention right now</span>
-    </a>
+    <div class="readout">
+      <a class="readout__cell" routerLink="/crew" [queryParams]="{ filter: 'needs_attention' }">
+        <span class="readout__fig" [class.readout__fig--warn]="s.crew.needs_attention > 0">{{ s.crew.needs_attention }}</span>
+        <span class="readout__lab">need attention</span>
+      </a>
+      <a class="readout__cell" routerLink="/board">
+        <span class="readout__fig" [class.readout__fig--fail]="s.flights.at_risk > 0">{{ s.flights.at_risk }}</span>
+        <span class="readout__lab">flights at risk</span>
+      </a>
+      <a class="readout__cell" routerLink="/crew" [queryParams]="{ filter: 'on_reserve' }">
+        <span class="readout__fig">{{ s.crew.reserve }}</span>
+        <span class="readout__lab">on reserve</span>
+      </a>
+    </div>
   } @else {
-    <p class="muted">loading…</p>
+    <div class="readout">
+      <div class="readout__cell"><span class="readout__fig">—</span><span class="readout__lab">loading shift</span></div>
+    </div>
   }
 
   <div class="sb__sections">
