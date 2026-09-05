@@ -1,0 +1,18 @@
+<div class="card">
+  <div class="card__title">Candidate funnel</div>
+  @if (!stages.length) {
+    <p class="muted">Runs on a replacement query — every drop is inspectable.</p>
+  }
+  @for (s of stages; track s.stage; let i = $index) {
+    <div class="row">
+      <div class="row__head">
+        <span class="row__stage">{{ pretty(s.stage) }}</span>
+        <span class="row__count mono">{{ s.count }}</span>
+      </div>
+      <div class="bar"><div class="bar__fill" [style.width.%]="pct(s.count)"></div></div>
+      @if (s.dropped) {
+        <div class="row__drop">− {{ s.dropped }} dropped · {{ s.reason }}</div>
+      }
+    </div>
+  }
+</div>

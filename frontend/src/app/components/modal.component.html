@@ -1,0 +1,8 @@
+<div class="scrim" (click)="onScrimClick($event)" role="presentation">
+  <section #panel class="glass panel" role="dialog" [attr.aria-label]="label" aria-modal="true">
+    <button class="panel__close" type="button" (click)="close()" aria-label="Close">✕</button>
+    <div class="panel__body">
+      <ng-content></ng-content>
+    </div>
+  </section>
+</div>

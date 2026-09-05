@@ -1,0 +1,25 @@
+<div class="rail">
+  <div class="rail__title">Evidence rail <span class="muted">· trust is inspectability</span></div>
+
+  <app-funnel [stages]="funnel()" />
+
+  <app-rule-trace [checks]="ruleChecks()" />
+
+  <app-blast-radius [blast]="blast()" />
+
+  @if (baseOptions().length) {
+    <div class="card">
+      <div class="card__title">Live re-rank</div>
+      <p class="muted">Move a weight — order and score update with no LLM call.</p>
+      @for (o of rankedOptions(); track o.action) {
+        <div class="rr" [class.rr--top]="o.rank === 1">
+          <span class="rr__rank">{{ o.rank }}</span>
+          <span class="rr__action">{{ o.action }}</span>
+          <span class="rr__cost mono">₹{{ o.cost_inr | number }}</span>
+          <span class="rr__score mono">{{ o._score }}</span>
+        </div>
+      }
+    </div>
+    <app-policy-sliders [weights]="store.weights()" (changed)="onWeights($event)" />
+  }
+</div>

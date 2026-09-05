@@ -1,0 +1,18 @@
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.stat {
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px; text-align: center;
+}
+.stat__n { display: block; font-size: 18px; font-weight: 600; }
+.stat__l { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-2); }
+
+.edges { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.edge {
+  display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 4px 6px;
+  border-left: 2px solid var(--line); background: var(--surface-2); border-radius: 0 4px 4px 0;
+}
+.edge[data-kind="direct"] { border-left-color: var(--fail); }
+.edge[data-kind="orphaned_day2"] { border-left-color: var(--warn); }
+.edge[data-kind="aircraft_rotation"] { border-left-color: var(--accent); }
+.edge__arrow { color: var(--fg-3); }
+.edge__kind { margin-left: auto; color: var(--fg-2); }

@@ -1,0 +1,42 @@
+{
+  "match": { "any": ["who is on reserve", "reserve at blr", "on-call window", "reserve pool"], "tier": 1 },
+  "status": "Resolving station BLR and date 2026-09-15…",
+  "trace": [
+    { "tool": "lookup", "args": { "entity": "reserve_pool", "filters": { "base": "BLR", "date": "2026-09-15" } },
+      "summary": "12 reserve crew on call at BLR on 15 Sep", "data": { "rows": 12, "source": "reserve_pool.json" }, "ms": 9 }
+  ],
+  "answer": {
+    "tier": 1,
+    "intent": "LOOKUP_RESERVES",
+    "entities": { "station": "BLR", "date": "2026-09-15" },
+    "answer": {
+      "kind": "lookup",
+      "title": "Reserve crew on call — BLR, 15 Sep 2026",
+      "columns": ["Crew", "Rank", "On-call (UTC)", "Reachable"],
+      "rows": [
+        ["C-3305", "Captain", "00:00–05:30", "—"],
+        ["C-3310", "Captain", "06:00–18:00", "45 min"],
+        ["C-3311", "First Officer", "06:00–18:00", "—"],
+        ["C-3312", "First Officer", "00:00–12:00", "—"],
+        ["C-3315", "Captain", "03:00–15:00", "—"],
+        ["C-3316", "First Officer", "03:00–15:00", "—"],
+        ["C-2111", "Senior Cabin Crew", "04:00–16:00", "—"],
+        ["C-3677", "Senior Cabin Crew", "04:00–16:00", "—"],
+        ["C-5418", "Cabin Crew", "04:00–16:00", "—"],
+        ["C-1329", "Cabin Crew", "04:00–16:00", "—"],
+        ["C-2248", "Cabin Crew", "04:00–16:00", "—"],
+        ["C-4809", "Cabin Crew", "00:00–12:00", "—"]
+      ],
+      "count": 12,
+      "citations": ["reserve_pool.json", "crew.json"]
+    },
+    "narrative": "Twelve reserves are on call at BLR on 15 Sep — three Captains (C-3305, C-3310, C-3315), two First Officers, and seven cabin crew. Windows vary: C-3305 covers only the early morning (00:00–05:30Z), while C-3310 and C-3315 cover the daytime.",
+    "citations": [
+      { "kind": "record", "source": "reserve_pool.json", "id": "BLR" }
+    ],
+    "confidence": "high",
+    "unknowns": []
+  },
+  "narration": "Twelve reserves are on call at BLR on 15 Sep — three Captains, two First Officers, seven cabin crew. ",
+  "grounded": true
+}

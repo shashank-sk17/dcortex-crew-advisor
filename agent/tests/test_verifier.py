@@ -6,6 +6,8 @@ controller. These tests are the closest thing this repo has to a safety case.
 
 from __future__ import annotations
 
+import pytest
+
 from agent.schemas import TraceEntry
 from agent.verifier import build_evidence, extract_claims, verify
 
@@ -275,3 +277,84 @@ class TestDerivedNumbers:
         from agent.verifier import build_evidence
 
         assert build_evidence(self._options()).derive(5.0) is None
+
+
+class TestClockClaims:
+    """A time is the one identifier with several correct spellings."""
+
+    def _trace(self):
+        from agent.schemas import TraceEntry
+
+        return [TraceEntry(tool="lookup", result={
+            "report_utc": "2026-09-15T06:00:00+00:00",
+            "release_utc": "2026-09-15T15:30:00+00:00",
+        })]
+
+    def test_a_reformatted_time_is_still_sourced(self):
+        """Postgres returns 2026-09-15T06:00:00+00:00; a controller reads
+        06:00Z. The model turning one into the other is doing its job. This
+        rejection was silently discarding every polished tier-1 answer that
+        mentioned a report time."""
+        assert verify("Report 06:00Z, release 15:30Z.", self._trace()).ok
+
+    def test_a_time_nobody_said_is_still_rejected(self):
+        assert not verify("Report 07:00Z.", self._trace()).ok
+
+    def test_a_timestamp_does_not_vouch_for_midnight(self):
+        """`\\b` could not match `T06:00`, so the pattern used to index the
+        `00:00` out of the UTC offset — and every timestamp then supported a
+        midnight claim nobody had made."""
+        assert not verify("On call from 00:00.", self._trace()).ok
+
+    def test_the_real_time_inside_a_timestamp_is_evidence(self):
+        from agent.verifier import build_evidence
+
+        assert build_evidence(self._trace()).has_identifier("06:00")
+
+    @pytest.mark.parametrize("written,normal", [
+        ("06:00", "06:00"), ("6:00", "06:00"), ("06:00Z", "06:00"),
+        ("06:00:00+00:00", "06:00"), ("15:30Z", "15:30"),
+    ])
+    def test_spellings_normalise_to_one_value(self, written, normal):
+        from agent.verifier import normalise_clock
+
+        assert normalise_clock(written) == normal
+
+    @pytest.mark.parametrize("bad", ["25:00", "C-1042", "18,500", "2026-09-15"])
+    def test_non_times_do_not_normalise(self, bad):
+        from agent.verifier import normalise_clock
+
+        assert normalise_clock(bad) is None
+
+
+class TestClockNormalisationIsNarrow:
+    """This is the one place the gate calls two different strings the same
+    fact, so the equivalence has to be exact rather than convenient."""
+
+    @pytest.mark.parametrize("value", ["06:00:30", "06:00:01"])
+    def test_non_zero_seconds_do_not_collapse(self, value):
+        """06:00:30 is not 06:00. Every timestamp in this dataset ends :00,
+        and the check must not depend on that staying true."""
+        from agent.verifier import normalise_clock
+
+        assert normalise_clock(value) is None
+
+    @pytest.mark.parametrize("value", ["06:00+05:30", "06:00:00-08:00"])
+    def test_a_non_utc_offset_does_not_normalise(self, value):
+        """06:00+05:30 is a different instant from 06:00Z."""
+        from agent.verifier import normalise_clock
+
+        assert normalise_clock(value) is None
+
+    def test_a_shifted_time_is_not_sourced_by_its_utc_twin(self):
+        from agent.schemas import TraceEntry
+
+        trace = [TraceEntry(tool="lookup",
+                            result={"report_utc": "2026-09-15T06:00:00+00:00"})]
+        assert not verify("Report 06:00+05:30.", trace).ok
+
+    @pytest.mark.parametrize("value", ["06:00", "06:00Z", "06:00:00", "06:00:00+00:00"])
+    def test_utc_spellings_still_collapse(self, value):
+        from agent.verifier import normalise_clock
+
+        assert normalise_clock(value) == "06:00"

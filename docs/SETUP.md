@@ -98,7 +98,7 @@ misspelled.
 pytest -q
 ```
 
-**300 passing.** Roughly twenty of those talk to the database and skip
+**334 passing.** Roughly twenty of those talk to the database and skip
 automatically if `DATABASE_URL` is missing, so a clean run without the URL
 shows skips rather than failures.
 

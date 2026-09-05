@@ -1,0 +1,72 @@
+<div class="card">
+  <div class="card__title">Ranked options</div>
+  @for (o of options; track o.action) {
+    <div class="opt" [class.opt--top]="o.rank === 1 && o.legal" [class.opt--illegal]="!o.legal">
+      <div class="opt__rank">{{ o.legal ? o.rank : '✗' }}</div>
+      <div class="opt__body">
+        <div class="opt__head">
+          <strong>{{ o.action }}</strong>
+          <span class="chip" [class.chip--pass]="o.legal" [class.chip--fail]="!o.legal">
+            {{ o.legal ? 'legal' : 'blocked' }}
+          </span>
+        </div>
+        <div class="opt__meta">
+          <span class="cost mono">₹{{ o.cost_inr | number }}</span>
+          @if (o.delay_hours) { <span class="chip chip--warn">+{{ o.delay_hours }}h delay</span> }
+          @if (o.blast_radius) { <span class="chip">blast {{ o.blast_radius }}</span> }
+          @if (o.reachability_minutes != null) { <span class="chip chip--muted">reach {{ o.reachability_minutes }}m</span> }
+        </div>
+        @if (o.cost_breakdown) {
+          <div class="bd">
+            @for (kv of entries(o.cost_breakdown); track kv[0]) {
+              <span class="bd__item">{{ kv[0] }} ₹{{ kv[1] | number }}</span>
+            }
+          </div>
+        }
+        @if (o.unlock) { <div class="opt__unlock">🔓 {{ o.unlock }}</div> }
+        @if (o.reasoning) { <p class="opt__why">{{ o.reasoning }}</p> }
+        @if (o.legal && o.crew_id) {
+          @if (decidedCrewId === o.crew_id) {
+            <span class="chip chip--pass opt__accepted">✓ accepted</span>
+          } @else if (!decidedCrewId) {
+            <button type="button" class="opt__accept" [disabled]="deciding" (click)="accept.emit(o)">
+              {{ deciding ? '…' : 'Accept this option' }}
+            </button>
+          }
+        }
+      </div>
+    </div>
+  }
+
+  @if (nearMisses.length) {
+    <div class="card__title mt">Near-misses — not legal as-is, but one lever away</div>
+    @for (o of nearMisses; track o.action) {
+      <div class="opt opt--near">
+        <div class="opt__rank">~</div>
+        <div class="opt__body">
+          <div class="opt__head"><strong>{{ o.action }}</strong><span class="chip chip--warn">near-miss</span></div>
+          <div class="opt__meta"><span class="cost mono">₹{{ o.cost_inr | number }}</span>
+            @if (o.delay_hours) { <span class="chip chip--warn">+{{ o.delay_hours }}h</span> }</div>
+          @if (o.unlock) { <div class="opt__unlock">🔓 {{ o.unlock }}</div> }
+          @if (o.reasoning) { <p class="opt__why">{{ o.reasoning }}</p> }
+        </div>
+      </div>
+    }
+  }
+
+  @if (excluded.length) {
+    <details class="excl">
+      <summary>{{ excluded.length }} candidates excluded — see why</summary>
+      @for (x of excluded; track x.crew_id) {
+        <div class="excl__row">
+          <span class="chip mono">{{ x.crew_id }}</span>
+          <div class="excl__verdicts">
+            @for (v of x.verdicts; track v.rule_id + v.detail) {
+              <div class="excl__v"><span class="chip chip--fail mono">{{ v.rule_id }}</span> {{ v.detail }}</div>
+            }
+          </div>
+        </div>
+      }
+    </details>
+  }
+</div>

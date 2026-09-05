@@ -15,9 +15,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from dataclasses import fields as dataclass_fields
+from datetime import date, timedelta
 from typing import Any, Iterator
 
-from agent import config, explainer, verifier
+from agent import config, explainer, notify, verifier
 from agent.entities import stated_ranks
 from agent.llm import LLM, StreamEvent, ToolCall, default_llm
 from agent.prompts import system_prompt
@@ -30,6 +31,7 @@ from agent.schemas import (
     FunnelStage,
     Intent,
     LookupAnswer,
+    NotificationAnswer,
     Option,
     ReplacementAnswer,
     RuleVerdict,
@@ -78,6 +80,8 @@ _INTENT_TOOLS: dict[Intent, tuple[str, ...]] = {
     Intent.LOOKUP_CREW: ("lookup",),
     Intent.LOOKUP_FLIGHT: ("lookup",),
     Intent.LOOKUP_CERT: ("lookup",),
+    Intent.LOOKUP_RISK: ("lookup",),
+    Intent.DRAFT_NOTIFICATION: ("notification_brief", "lookup"),
     Intent.LOOKUP_DUTY_CLOCK: ("duty_clock",),
     Intent.EXPLAIN_RULE: ("explain_rule",),
     Intent.CHECK_GATE: ("check_gate",),
@@ -114,6 +118,10 @@ MISSING_FOR_INTENT: dict[Intent, str] = {
     Intent.EXPLAIN_RULE: "a rule id, e.g. RULE-DUTY-02",
     Intent.LOOKUP_DUTY_CLOCK: "a crew id, e.g. C-1042",
     Intent.CHECK_GATE: "a flight (id, or number with date) and/or a boarding gate number",
+    # An unfiltered crew lookup is 150 rows, which is not an answer to
+    # anything a controller actually asked.
+    Intent.LOOKUP_CREW: ("something to narrow by — a crew id, a rank, a base, "
+                         "or an aircraft rating"),
 }
 
 
@@ -167,6 +175,51 @@ def _flight_filters(ents: Any) -> dict[str, Any]:
     return filters
 
 
+def _crew_filters(ents: Any) -> dict[str, Any]:
+    """Narrow a crew listing by whatever the question actually pinned down.
+
+    An unfiltered `crew` lookup is 150 rows, which answers "who is available"
+    with the entire airline. Every filter here is something the controller
+    said out loud.
+    """
+    filters: dict[str, Any] = {}
+    if ents.primary_crew:
+        filters["crew_id"] = ents.primary_crew
+    if ents.roles:
+        filters["rank"] = ents.roles[0]
+    if ents.stations:
+        filters["base"] = ents.stations[0]
+    if ents.aircraft_types:
+        filters["ratings"] = ents.aircraft_types[0]
+    return filters
+
+
+def _cert_filters(ents: Any) -> dict[str, Any]:
+    """Build a certification filter, turning "within 30 days" into an interval.
+
+    An expiry question is an interval, not a point — Q04's own answer key says
+    `valid_to between 2026-09-15 and 2026-10-15`. Computing that window here
+    keeps the selection below the trust boundary; the alternative is handing
+    the model 600 rows and asking it to pick the six, which is precisely the
+    arithmetic it must never do.
+
+    With no stated horizon no window is invented: the query is answered as
+    whatever it literally asked for, and a controller who wanted a window can
+    say so. The anchor, when a horizon is given without a date, is the first
+    day of the dataset's operating week — the only "today" this world has.
+    """
+    filters: dict[str, Any] = {}
+    if ents.primary_crew:
+        filters["crew_id"] = ents.primary_crew
+    if ents.cert_types:
+        filters["cert_type"] = ents.cert_types[0]
+    if ents.horizon_days:
+        start = date.fromisoformat(ents.primary_date or config.WEEK_START)
+        end = start + timedelta(days=ents.horizon_days)
+        filters["valid_to"] = {"gte": start.isoformat(), "lte": end.isoformat()}
+    return filters
+
+
 def seed_calls(route: Route) -> list[ToolCall]:
     """First tool calls implied by the entities, before the model is consulted.
 
@@ -210,6 +263,26 @@ def seed_calls(route: Route) -> list[ToolCall]:
                 boarding_gate_number=ents.primary_gate,
                 delay_minutes=ents.delay_minutes or 0.0,
                 at_utc=at_utc)
+        case Intent.LOOKUP_CERT:
+            add("lookup", entity="certifications", filters=_cert_filters(ents))
+
+        case Intent.LOOKUP_RISK:
+            add("lookup", entity="risk_signals",
+                filters={"crew_id": ents.primary_crew} if ents.primary_crew else {})
+
+        case Intent.LOOKUP_CREW if _crew_filters(ents):
+            add("lookup", entity="crew", filters=_crew_filters(ents))
+
+        case Intent.LOOKUP_ROSTER if ents.primary_pairing:
+            add("lookup", entity="pairing_crew",
+                filters={"pairing_id": ents.primary_pairing})
+
+        case Intent.LOOKUP_ROSTER if ents.primary_crew:
+            add("lookup", entity="pairing_crew", filters={"crew_id": ents.primary_crew})
+
+        case Intent.DRAFT_NOTIFICATION if ents.primary_crew and ents.primary_pairing:
+            add("notification_brief",
+                crew_id=ents.primary_crew, pairing_id=ents.primary_pairing)
 
         case Intent.CHECK_LEGALITY if ents.primary_crew and ents.primary_pairing:
             add("check_legality",
@@ -345,6 +418,10 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
         first = next((e.result for e in trace
                      if e.tool == "check_gate" and e.result is not None), None)
         return LookupAnswer(rows=[first] if first else [])
+    if route.intent is Intent.DRAFT_NOTIFICATION:
+        brief = results.get("notification_brief") or {}
+        return NotificationAnswer(
+            message=notify.render(brief) if brief else "", brief=brief)
 
     if route.tier is Tier.LOOKUP:
         rows: list[dict[str, Any]] = []
@@ -376,6 +453,8 @@ def build_answer(route: Route, trace: list[TraceEntry]) -> Any:
         rec = _coerce(Option, [found["recommended"]]) if found.get("recommended") else []
         return ReplacementAnswer(
             subject=checked.get("crew_id"),
+            subject_name=checked.get("name") or "",
+            subject_rank=checked.get("rank") or "",
             legal=checked.get("legal"),
             verdicts=_coerce(RuleVerdict, checked.get("verdicts")),
             recommended=rec[0] if rec else None,
@@ -578,6 +657,7 @@ class Advisor:
         response = AdvisorResponse(
             tier=turn.route.tier,
             intent=turn.route.intent,
+            query=turn.query,
             entities=turn.route.entities.to_dict(),
             answer=build_answer(turn.route, turn.trace),
             confidence=confidence,
@@ -662,6 +742,7 @@ class Advisor:
         response = AdvisorResponse(
             tier=turn.route.tier,
             intent=turn.route.intent,
+            query=turn.query,
             entities=turn.route.entities.to_dict(),
             answer=build_answer(turn.route, turn.trace),
             trace=turn.trace,

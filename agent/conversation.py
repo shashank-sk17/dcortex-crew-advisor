@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent import explainer
 from agent.advisor import Advisor, AdvisorConfig
 from agent.entities import CREW_RE, Entities, extract
 from agent.llm import LLM
@@ -123,6 +124,22 @@ class Exchange:
         return None
 
 
+def _name_of(record: Any, crew_id: str) -> str:
+    """`Captain A. Nair (C-1042)` from an option or an exclusion row.
+
+    Both shapes turn up here — options are dataclasses, exclusions are plain
+    dicts — and a follow-up should read the same either way.
+    """
+    get = record.get if isinstance(record, dict) else (
+        lambda k, d=None: getattr(record, k, d))
+    # `rank` means two different things here. On an exclusion row it is the
+    # job — "Captain". On an Option it is the position in the ranking, an int,
+    # and it cannot be renamed because the answer keys compare against it
+    # (DECISIONS.md #10). So only a string is a job rank.
+    job = get("rank")
+    return explainer.who(crew_id, get("name"), job if isinstance(job, str) else None)
+
+
 @dataclass
 class Conversation:
     """A controller's session. Carries context so follow-ups mean something."""
@@ -205,27 +222,29 @@ class Conversation:
         if found is None:
             return None
         search, record, where = found
+        name = _name_of(record, crew_id)
 
         if where == "excluded":
             return self._from_prior(
-                f"{crew_id} was excluded: {record.get('reason', 'no reason recorded')}",
+                f"{name} was excluded: {record.get('reason', 'no reason recorded')}",
                 search, cites=record.get("rules", []))
 
         options = search.options
         top = options[0] if options else None
         if record is top:
             return self._from_prior(
-                f"{crew_id} *is* the recommendation — "
+                f"{name} *is* the recommendation — "
                 f"₹{record.cost_inr:,}"
                 + (f", {record.delay_hours}h delay." if record.delay_hours else ", no delay."),
                 search)
 
-        text = (f"{crew_id} is legal, ranked #{getattr(record, 'rank', '?')}: "
+        text = (f"{name} is legal, ranked #{getattr(record, 'rank', '?')}: "
                 f"₹{record.cost_inr:,}")
         if record.delay_hours:
             text += f" and delays the first departure by {record.delay_hours}h"
         if top is not None:
-            text += f", against ₹{top.cost_inr:,} for {top.crew_id}."
+            text += (f", against ₹{top.cost_inr:,} for "
+                     f"{_name_of(top, top.crew_id)}.")
         return self._from_prior(text, search)
 
     def _answer_decision(self, crew_id: str) -> AdvisorResponse | None:
@@ -238,8 +257,8 @@ class Conversation:
         if where == "excluded":
             # Refuse to book someone the rules engine rejected, and say why.
             return self._from_prior(
-                f"I cannot record {crew_id}: they were excluded — "
-                f"{chosen.get('reason', 'no reason recorded')}",
+                f"I cannot record {_name_of(chosen, crew_id)}: they were "
+                f"excluded — {chosen.get('reason', 'no reason recorded')}",
                 prior, cites=chosen.get("rules", []))
 
         self.decisions.append({
@@ -255,25 +274,31 @@ class Conversation:
                      f"{recommended.crew_id} was ₹{recommended.cost_inr:,}.")
         return self._from_prior(text, prior)
 
-    def _from_prior(self, text: str, prior: Exchange,
-                    cites: list[str] | None = None) -> AdvisorResponse:
+    def _from_prior(self, text: str, prior: Exchange | None,
+                    cites: list[str] | None = None,
+                    awaiting: str | None = None) -> AdvisorResponse:
         """An answer built from a previous turn's evidence.
 
         The trace is carried over so the verifier still has something to check
         against — a follow-up is not exempt from sourcing just because it
         needed no new tool call.
+
+        `prior` may be None: the very first thing a controller says can still
+        be a question we have to hand back, and "which Nair?" needs no earlier
+        turn to be a fair thing to ask.
         """
-        from agent.schemas import Citation
+        from agent.schemas import Citation, Intent, Tier
 
         return AdvisorResponse(
-            tier=prior.response.tier,
-            intent=prior.response.intent,
-            entities=prior.response.entities,
-            answer=prior.response.answer,
+            tier=prior.response.tier if prior else Tier.LOOKUP,
+            intent=prior.response.intent if prior else Intent.LOOKUP_CREW,
+            entities=prior.response.entities if prior else {},
+            answer=prior.response.answer if prior else None,
             narrative=text,
             citations=[Citation(kind="rule", id=r) for r in (cites or [])],
             confidence=Confidence.HIGH,
-            trace=prior.response.trace,
+            trace=prior.response.trace if prior else [],
+            awaiting=awaiting,
         )
 
     # -- the turn ----------------------------------------------------------
@@ -331,7 +356,21 @@ class Conversation:
                 if answer := self._answer_decision(target):
                     return self._record(query, answer)
 
-        # 5. A new question, with whatever this turn left implicit filled in.
+        # 5. A person named in words rather than by id. The system writes
+        #    "Captain A. Nair (C-1042)", so a controller writes "Nair" back —
+        #    and if that is not resolved the query runs with no crew filter at
+        #    all and answers with the roster.
+        if ents.names and not ents.crew_ids:
+            named = self._resolve_name(ents, prior)
+            if named is not None:
+                if isinstance(named, str):
+                    query_for_agent = self._name_to_id(query, ents, named)
+                    ents.crew_ids = [named]
+                    return self._record(
+                        query, self._advisor.ask(query_for_agent), ents)
+                return self._record(query, named, ents)
+
+        # 6. A new question, with whatever this turn left implicit filled in.
         query_for_agent = query
         if prior is not None and (WHAT_ABOUT_RE.search(query)
                                   or ANAPHORA_RE.search(query)
@@ -340,6 +379,101 @@ class Conversation:
             query_for_agent = self._rewrite(query, ents)
 
         return self._record(query, self._advisor.ask(query_for_agent), ents)
+
+    def _resolve_name(self, ents: Entities, prior: Any) -> Any:
+        """A crew id, a question back to the controller, or None to carry on.
+
+        Three outcomes and no fourth. Exactly one match resolves. Several
+        matches ask which — every surname in this dataset is shared, and
+        "A. Nair" alone is a Captain and a Cabin Crew member at the same base,
+        so picking one would dispatch the wrong human being (DECISIONS.md
+        #22). No match at all means the word was never a name — "Sep" is not
+        a person — and the question proceeds untouched.
+
+        Context wins first. Right after discussing Captain A. Nair (C-1042),
+        "is Nair available?" means that one, not the other six.
+        """
+        from agent.tools import crew_named
+
+        for candidate in ents.names:
+            try:
+                matches = crew_named(self._advisor.port, candidate)
+            except Exception:
+                return None
+            if not matches:
+                continue
+
+            if prior is not None and len(matches) > 1:
+                known = set(prior.entities.crew_ids)
+                if narrowed := [m for m in matches if m["crew_id"] in known]:
+                    matches = narrowed
+            if ents.roles:
+                if narrowed := [m for m in matches if m["rank"] == ents.roles[0]]:
+                    matches = narrowed
+            if ents.stations:
+                if narrowed := [m for m in matches if m["base"] == ents.stations[0]]:
+                    matches = narrowed
+
+            if len(matches) == 1:
+                return matches[0]["crew_id"]
+
+            listed = "; ".join(
+                explainer.who(m["crew_id"], m["name"], m["rank"]) + f" at {m['base']}"
+                for m in matches[:8])
+            more = "" if len(matches) <= 8 else f" (and {len(matches) - 8} others)"
+            return self._from_prior(
+                f"{candidate} matches {len(matches)} crew: {listed}{more}. "
+                f"Which one? Give me the id and I will run it — I will not "
+                f"guess, because they are different people.",
+                prior, awaiting="confirmation")
+
+        # Every candidate drew a blank. Most are not names at all — "Sep",
+        # "Available" — and those must not derail the question. But a query
+        # whose *only* subject was an unrecognised name would otherwise run
+        # with no crew filter and answer with the roster, which is the one
+        # outcome worse than saying "I don't know who that is".
+        if not any((ents.pairing_ids, ents.flight_ids, ents.flight_nos,
+                    ents.rule_ids, ents.aircraft, ents.stations, ents.roles)):
+            unknown = self._closest_names(ents.names)
+            if unknown:
+                return self._from_prior(unknown, prior, awaiting="detail")
+        return None
+
+    def _closest_names(self, candidates: list[str]) -> str:
+        """"I don't know who that is", with the nearest surnames we do know.
+
+        Only for a word that plausibly *was* meant as a name. Returning the
+        whole roster instead would be a non-answer dressed as one.
+        """
+        import difflib
+
+        try:
+            crew = self._advisor.port.lookup("crew")
+        except Exception:
+            return ""
+        surnames = sorted({str(c.get("name") or "").split()[-1] for c in crew if c.get("name")})
+
+        for candidate in candidates:
+            near = difflib.get_close_matches(candidate, surnames, n=3, cutoff=0.6)
+            if near:
+                return (f"No crew called {candidate}. The roster has "
+                        f"{', '.join(near)} — did you mean one of those? "
+                        f"Or give me the id.")
+            # Nothing close either. Still say so: the alternative is running
+            # the query with no crew filter and answering a question about one
+            # person with all 150 of them.
+            return (f"No crew called {candidate}, and nothing on the roster is "
+                    f"close to it. Crew ids look like C-1042 — give me one, or "
+                    f"tell me the rank and base and I will list who fits.")
+        return ""
+
+    @staticmethod
+    def _name_to_id(query: str, ents: Entities, crew_id: str) -> str:
+        """Hand the advisor the id, keeping the controller's own wording."""
+        rewritten = query
+        for candidate in ents.names:
+            rewritten = rewritten.replace(candidate, f"{candidate} ({crew_id})")
+        return rewritten if crew_id in rewritten else f"{query} ({crew_id})"
 
     @staticmethod
     def _rewrite(query: str, ents: Entities) -> str:

@@ -1,0 +1,5 @@
+.grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 14px; }
+.metric { display: flex; flex-direction: column; gap: 4px; }
+.metric__n { font-size: 24px; font-weight: 600; }
+.metric__l { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-2); }
+.flights { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }

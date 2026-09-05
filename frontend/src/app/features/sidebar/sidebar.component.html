@@ -1,0 +1,74 @@
+<div class="sb">
+  @if (summary(); as s) {
+    <a class="sb__hero" routerLink="/crew" [queryParams]="{ filter: 'needs_attention' }">
+      <span class="focus-stat" [class.focus-stat--warn]="s.crew.needs_attention > 0">{{ s.crew.needs_attention }}</span>
+      <span class="sb__hero-label">crew(s) need attention right now</span>
+    </a>
+  } @else {
+    <p class="muted">loading…</p>
+  }
+
+  <div class="sb__sections">
+    @if (summary(); as s) {
+      <app-accordion-item title="Shift summary" [open]="openSection() === 'summary'" (toggle)="toggle('summary')">
+        <div class="grid">
+          <a class="tile" routerLink="/crew" [queryParams]="{ filter: 'on_duty' }">
+            <span class="tile__n">{{ s.crew.on_duty }}</span><span class="tile__l">on duty</span>
+          </a>
+          <a class="tile" routerLink="/crew" [queryParams]="{ filter: 'on_reserve' }">
+            <span class="tile__n">{{ s.crew.reserve }}</span><span class="tile__l">reserve</span>
+          </a>
+          <div class="tile"><span class="tile__n">{{ s.crew.off_duty }}</span><span class="tile__l">off duty</span></div>
+          <div class="tile"><span class="tile__n">{{ s.flights.total }}</span><span class="tile__l">flights today</span></div>
+        </div>
+      </app-accordion-item>
+
+      <app-accordion-item title="Flights today" [badge]="s.flights.at_risk" [open]="openSection() === 'flights'" (toggle)="toggle('flights')">
+        <div class="bars">
+          <div class="bar"><span>at risk</span><b class="crit">{{ s.flights.at_risk }}</b></div>
+          <div class="bar"><span>elevated</span><b class="warn">{{ s.flights.delayed }}</b></div>
+          <div class="bar"><span>nominal</span><b class="ok">{{ s.flights.on_time }}</b></div>
+        </div>
+      </app-accordion-item>
+
+      <app-accordion-item title="Passengers affected" [badge]="s.flights.pax_affected ?? 0" [open]="openSection() === 'pax'" (toggle)="toggle('pax')">
+        <div class="pax">
+          @for (f of s.flights.disrupted ?? []; track f.flight_id) {
+            <a class="pax__row" routerLink="/board" [queryParams]="{ flight: f.flight_id }">
+              <span><span class="mono">{{ f.flight_no }}</span> <span class="pax__route">{{ f.route }}</span></span>
+              <b>{{ f.pax }}</b>
+            </a>
+          }
+          @if (!(s.flights.disrupted ?? []).length) { <p class="muted sm">No disrupted flights right now.</p> }
+        </div>
+      </app-accordion-item>
+
+      <app-accordion-item title="Reserve pool" [open]="openSection() === 'reserves'" (toggle)="toggle('reserves')">
+        <div class="pool">
+          @for (kv of poolEntries(s); track kv[0]) {
+            <div class="pool__row" [class.pool__row--low]="kv[1] <= 1">
+              <span>{{ kv[0] }}</span><b>{{ kv[1] }}</b>
+            </div>
+          }
+        </div>
+      </app-accordion-item>
+    }
+
+    <app-accordion-item title="Disruption watch-list" [badge]="risk().length" [open]="openSection() === 'watchlist'" (toggle)="toggle('watchlist')">
+      <div class="risk">
+        @for (r of risk(); track r.crew_id) {
+          <a class="risk__row" [routerLink]="['/crew', r.crew_id]">
+            <div class="risk__top">
+              <span><span class="mono">{{ r.crew_id }}</span> <span class="risk__name">{{ r.name ?? '' }}</span></span>
+              <span class="risk__score" [class.hot]="r.risk_score >= 0.7">
+                {{ r.risk_score | number: '1.2-2' }}
+              </span>
+            </div>
+            @if (r.drivers.length) { <div class="risk__why">{{ r.drivers[0] }}</div> }
+          </a>
+        }
+        @if (!risk().length) { <p class="muted sm">Nothing on the watch-list.</p> }
+      </div>
+    </app-accordion-item>
+  </div>
+</div>

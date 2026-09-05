@@ -1,0 +1,192 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Crew Ops Console — dCortex light theme
+   Palette + type pulled directly from dcortex.ai (paper #f7f5f1, ink #07090b,
+   brand lime #7ed321, blue #2563eb, amber #eab308, DM Sans, 16px card radius,
+   their own glass-scrim recipe). Mandatory light theme; bigger type; one thing
+   highlighted at a time; glassy popups on their own translucency numbers.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* type — DM Sans is dCortex's own brand face */
+  --face: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "B612 Mono", ui-monospace, "Cascadia Mono", "SFMono-Regular", monospace;
+
+  /* ground — their real paper, not stark white */
+  --ground: #f7f5f1;
+  --ground-1: #ffffff;      /* elevated card */
+  --ground-2: #f0ede8;      /* hover / secondary surface */
+  --ground-panel: #ffffff;
+
+  --hairline: #e6e0d4;
+  --hairline-strong: #d3cabb;
+
+  /* ink — their real text colour, tinted warm, never flat gray */
+  --ink: #07090b;
+  --ink-1: #3a362f;         /* ~11:1 on ground */
+  --ink-2: #635d50;         /* ~5.4:1 on ground — text-safe */
+  --ink-faint: #a39c8c;     /* decorative only — never text */
+
+  /* legend — brand accents, darkened only where used as text/icon (AA) */
+  --legal: #3f7f18;      --legal-bg: #eaf7d8;   --legal-line: #bfe89a;   --legal-raw: #7ed321;
+  --near:  #b45309;      --near-bg:  #fef3c7;   --near-line: #f2c14e;    --near-raw: #eab308;
+  --breach:#b91c1c;      --breach-bg:#fee2e2;   --breach-line:#fca5a5;   --breach-raw:#f87171;
+  --ref:   #2563eb;      --ref-bg:   #dbeafe;   --ref-line:  #93c5fd;
+
+  --transition-ink: #1a1a1a;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --pill: 999px;
+  --rule-w: 1px;
+  --focus: 0 0 0 2px var(--ground), 0 0 0 4px var(--ref);
+
+  --shadow-card: 0 1px 2px rgba(7, 9, 11, .04), 0 6px 20px rgba(7, 9, 11, .06);
+  --shadow-pop:  0 20px 60px rgba(7, 9, 11, .22), 0 4px 16px rgba(7, 9, 11, .10);
+
+  /* glass — dCortex's own translucency recipe (rgba(7,9,11,…) scrim, rgba(247,245,241,…) panel) */
+  --scrim: rgba(7, 9, 11, .45);
+  --glass-bg: rgba(255, 255, 255, .72);
+  --glass-bg-2: rgba(247, 245, 241, .60);
+  --glass-border: rgba(255, 255, 255, .6);
+  --glass-blur: 22px;
+
+  /* ── compatibility aliases — every existing component re-skins from these ── */
+  --surface-0: var(--ground);
+  --surface-1: var(--ground-1);
+  --surface-2: var(--ground-2);
+  --surface-3: var(--ground-panel);
+  --line: var(--hairline);
+  --fg-0: var(--ink);
+  --fg-1: var(--ink-1);
+  --fg-2: var(--ink-2);
+  --fg-3: var(--ink-2);
+  --accent: var(--ref);
+  --accent-line: var(--ref-line);
+  --accent-bg: var(--ref-bg);
+  --pass: var(--legal);  --pass-line: var(--legal-line);  --pass-bg: var(--legal-bg);
+  --fail: var(--breach); --fail-line: var(--breach-line); --fail-bg: var(--breach-bg);
+  --warn: var(--near);   --warn-line: var(--near-line);   --warn-bg: var(--near-bg);
+  --sans: var(--face);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: var(--face);
+  background: var(--ground);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4 { margin: 0; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
+:focus-visible { outline: none; box-shadow: var(--focus); border-radius: 4px; }
+
+::selection { background: color-mix(in oklab, var(--ref) 30%, transparent); color: var(--ink); }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb { background: var(--hairline-strong); border: 3px solid var(--ground); border-radius: var(--pill); }
+::-webkit-scrollbar-track { background: transparent; }
+* { scrollbar-color: var(--hairline-strong) var(--ground); scrollbar-width: thin; }
+input, textarea, select { font: inherit; color: var(--ink); }
+
+/* ── shared primitives — soft SaaS card language, not hard-edged chrome ─────── */
+
+.card {
+  background: var(--ground-1);
+  border: var(--rule-w) solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 16px 18px;
+}
+.card__title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-2); font-weight: 700; margin-bottom: 10px;
+}
+
+/* pill chip / badge — fills, never a coloured left-border (that's the AI-slop tell) */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--pill);
+  background: var(--ground-2);
+  border: var(--rule-w) solid var(--hairline);
+  font-size: 13px; font-weight: 600; color: var(--ink-1);
+}
+.chip--pass { background: var(--legal-bg); border-color: var(--legal-line); color: var(--legal); }
+.chip--fail { background: var(--breach-bg); border-color: var(--breach-line); color: var(--breach); }
+.chip--warn { background: var(--near-bg); border-color: var(--near-line); color: var(--near); }
+.chip--muted { color: var(--ink-2); }
+
+.mono, .mono-sm { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.mono-sm { font-size: 13px; color: var(--ink-1); }
+.muted { color: var(--ink-2); }
+
+/* the "one thing gets attention" primitive — a headline stat */
+.focus-stat { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1; }
+.focus-stat--warn { color: var(--near); }
+.focus-stat--fail { color: var(--breach); }
+
+/* ── accordion — collapsed by default, one open at a time within a group ───── */
+.accordion__item + .accordion__item { border-top: var(--rule-w) solid var(--hairline); }
+.accordion__head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 14px 4px; text-align: left; font-weight: 700; font-size: 15px; color: var(--ink);
+}
+.accordion__head:hover { color: var(--ref); }
+.accordion__chev { color: var(--ink-2); transition: transform 180ms ease; flex: none; }
+.accordion__item[data-open="true"] .accordion__chev { transform: rotate(90deg); color: var(--ref); }
+.accordion__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 220ms ease, opacity 180ms ease;
+}
+.accordion__item[data-open="true"] .accordion__body {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.accordion__body-inner {
+  overflow: hidden;
+  min-height: 0;
+  padding: 0 4px;
+}
+.accordion__item[data-open="true"] .accordion__body-inner {
+  padding: 0 4px 16px;
+}
+
+/* ── glassy popup — dCortex's own scrim + translucency values, blurred ─────── */
+.scrim {
+  position: fixed; inset: 0; background: var(--scrim);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; z-index: 80;
+  animation: scrim-in 180ms ease both;
+}
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-pop);
+  animation: pop-in 220ms cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* shared loading state — flight/crew detail drawers while the real backend answers */
+.loading-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 20px 4px; color: var(--ink-2); font-size: 13.5px;
+}
+.spinner {
+  width: 16px; height: 16px; flex: none; border-radius: 50%;
+  border: 2px solid var(--hairline); border-top-color: var(--accent);
+  animation: spin 700ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

@@ -1,0 +1,10 @@
+.row { margin-bottom: 12px; }
+.row__head { display: flex; justify-content: space-between; align-items: baseline; }
+.row__stage { font-size: 13px; color: var(--fg-1); }
+.row__count { color: var(--fg-0); font-size: 13px; }
+.bar {
+  height: 8px; background: var(--surface-3); border-radius: 4px;
+  overflow: hidden; margin: 4px 0;
+}
+.bar__fill { height: 100%; background: linear-gradient(90deg, var(--accent-line), var(--accent)); }
+.row__drop { font-size: 11px; color: var(--fail); }

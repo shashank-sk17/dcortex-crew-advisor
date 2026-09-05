@@ -133,6 +133,17 @@ RULES: tuple[Rule, ...] = (
     Rule(Intent.CHECK_GATE, GATE_RE, "gate"),
     # ---- tier 3 -----------------------------------------------------------
     Rule(
+        # First, because "draft the callout notification" also contains
+        # "callout" — which is a cover request everywhere else in this table.
+        # The verb is what distinguishes them: the controller has already
+        # decided who, and wants the message written.
+        Intent.DRAFT_NOTIFICATION,
+        _p(r"\bdraft\b", r"\bnotification\b", r"\bnotify\b", r"\bmessage (to|for)\b",
+           r"\bwrite (the |a )?(message|note|text|sms)\b", r"\binform\b",
+           r"\blet (them|him|her|the crew) know\b"),
+        "notification",
+    ),
+    Rule(
         # These phrasings are explicit enough to stand alone — "both captains
         # are sick" names two events without naming either crew member.
         Intent.JOINT_PLAN,
@@ -220,14 +231,16 @@ RULES: tuple[Rule, ...] = (
     Rule(
         # Risk scores are provided input, not something we model — but a
         # question about one is still a lookup, and must not fall through.
-        Intent.LOOKUP_CREW,
+        Intent.LOOKUP_RISK,
         _p(r"\brisk score\b", r"\bdisruption[- ]risk\b", r"\brisk signal",
            r"\bwhat drives\b"),
         "risk",
     ),
     Rule(
         Intent.LOOKUP_FLIGHT,
-        _p(r"\bwhich flights?\b", r"\bflights? (depart|arrive|from|to)\b",
+        _p(r"\bwhich flights?\b", r"\bflights? (depart|arrive|from|to|operate)\b",
+           r"\bhow many flights\b", r"\bhow many seats\b",
+           r"\bwhich aircraft (operates|flies)\b", r"\bblock time\b",
            r"\bdepartures?\b", r"\barrivals?\b", r"\bschedule\b",
            # Network shape is a question about the flight table.
            r"\bstations?\b.*\b(serve|network|nonstop|non-stop)\b",
@@ -242,8 +255,14 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         Intent.LOOKUP_CREW,
-        _p(r"\bwho\b", r"\blist all\b", r"\bhow many\b", r"\bqualified\b",
-           r"\brating\b", r"\bbased at\b"),
+        # `\bhow many\b` on its own used to live here and swallowed "how many
+        # flights operate on 16 Sep" — which then answered with all 150 crew.
+        # A confident wrong table is worse than an empty one, so the count has
+        # to name what is being counted.
+        _p(r"\bwho\b", r"\blist all\b", r"\bqualified\b",
+           r"\brating\b", r"\bbased at\b",
+           r"\bhow many\b\s+(crew|captains?|first officers?|pilots?|cabin crew|"
+           r"senior cabin crew|people|reserves?)\b"),
         "crew",
     ),
 )

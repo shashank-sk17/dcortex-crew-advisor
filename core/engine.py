@@ -140,10 +140,12 @@ def load_world(port: PostgresToolPort) -> World:
             assigned[r["crew_id"]].append((r["pairing_id"], day.report_utc, day.release_utc))
 
     crew = {}
-    for r in q("select crew_id, rank, base, ratings, status, reachability_minutes from crew"):
+    for r in q("select crew_id, name, rank, base, ratings, status, seniority, "
+               "reachability_minutes from crew"):
         cid = r["crew_id"]
         crew[cid] = CrewSnapshot(
             crew_id=cid, rank=r["rank"], base=r["base"],
+            name=r["name"] or "", seniority=r["seniority"],
             ratings=tuple(r["ratings"] or ()), status=r["status"],
             reachability_minutes=r["reachability_minutes"],
             last_rest_ended=clocks.get(cid),
@@ -189,12 +191,19 @@ class Candidate:
     def legal(self) -> bool:
         return rules.is_legal(self.verdicts)
 
-    def action(self, rank_name: str) -> str:
+    def action(self, rank_name: str, name: str = "") -> str:
+        """The instruction a controller carries out.
+
+        The id stays in it — the id is what goes into the roster system, and
+        two people can share a surname. But a person is who they phone, so
+        the name leads when we have one.
+        """
         kind = "reserve callout" if self.on_reserve else "day-off callout"
         if self.deadhead:
             kind += (f" + deadhead (first departure delayed "
                      f"~{self.delay_hours}h)")
-        return f"Assign {rank_name} {self.crew_id} ({kind})"
+        who = f"{rank_name} {name} ({self.crew_id})" if name else f"{rank_name} {self.crew_id}"
+        return f"Assign {who} ({kind})"
 
 
 def positioning_delay(world: World, crew: CrewSnapshot, day: DutyDay) -> float | None:

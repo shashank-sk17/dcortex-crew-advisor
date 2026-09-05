@@ -47,6 +47,22 @@ def base_system_prompt(with_exemplars: bool = False) -> str:
     return "\n".join(p for p in parts if p).strip()
 
 
+def naming_rule() -> str:
+    """The `Rank Name (C-XXXX)` section, lifted out of the system prompt.
+
+    The explainer runs its own passes with their own instructions, and those
+    models need this rule too. Quoting it here rather than restating it means
+    there is one wording to change, and no way for the two to drift into
+    disagreeing about how a person is written.
+    """
+    body = _read("system.md")
+    start = body.find("## How to refer to people")
+    if start < 0:
+        return ""
+    end = body.find("\n## ", start + 1)
+    return body[start:end if end > 0 else len(body)].strip()
+
+
 @lru_cache(maxsize=32)
 def system_prompt(intent: Intent | None = None, with_exemplars: bool = False) -> str:
     """Base prompt plus a short note on what this intent has to produce."""
