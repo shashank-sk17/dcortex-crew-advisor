@@ -763,16 +763,16 @@ class TestClarifyingQuestionsReachTheController:
             "If C-2087 covers P-2291, does any rule breach?")
         assert len(r.trace) == 1
 
-    def test_an_ordinary_failure_does_not_halt(self):
-        """A missing capability is not a question — the model may still route
-        around it."""
+    def test_an_ordinary_failure_is_not_treated_as_a_question(self):
+        """A missing capability is not something the desk can answer, so it
+        must not end the turn as though we had asked them something."""
         from agent.tools import PlaceholderToolPort, ToolError
 
         class Broken(PlaceholderToolPort):
             def check_legality(self, crew_id, pairing_id=None, **kw):
                 raise ToolError("INTERNAL", "needs the rules engine")
 
-        llm = self._eager_llm()
-        Advisor(port=Broken(), llm=llm).ask(
+        r = Advisor(port=Broken(), llm=self._eager_llm()).ask(
             "If C-2087 covers P-2291, does any rule breach?")
-        assert len(llm.calls) > 1, "halted on something that was not a question"
+        assert "needs the rules engine" in r.narrative
+        assert r.confidence is Confidence.LOW, "a capability gap read as confident"
