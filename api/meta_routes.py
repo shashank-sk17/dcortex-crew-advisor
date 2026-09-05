@@ -7,32 +7,132 @@ meta_bp = Blueprint("meta", __name__)
 @meta_bp.get("/api/v1/meta")
 def get_meta():
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
 
-        cur.execute("""
-            SELECT
-                (SELECT COUNT(*) FROM crew) AS crew_count,
-                (SELECT COUNT(*) FROM flights) AS flight_count,
-                (SELECT COUNT(*) FROM pairings) AS pairing_count,
-                (SELECT COUNT(*) FROM reserve_pool) AS reserve_count
-        """)
+                # -------------------------------------------------
+                # 1. Snapshot timestamp
+                # -------------------------------------------------
+                cur.execute("""
+                    SELECT MAX(as_of_utc)
+                    FROM duty_clocks;
+                """)
+                snapshot_utc = cur.fetchone()[0]
 
-        crew_count, flight_count, pairing_count, reserve_count = cur.fetchone()
+                # -------------------------------------------------
+                # 2. Dataset week
+                # -------------------------------------------------
+                cur.execute("""
+                    SELECT
+                        MIN(date),
+                        MAX(date)
+                    FROM flights;
+                """)
+                week_start, week_end = cur.fetchone()
 
-        cur.close()
-        conn.close()
+                # -------------------------------------------------
+                # 3. All dates in dataset
+                # -------------------------------------------------
+                cur.execute("""
+                    SELECT DISTINCT date
+                    FROM flights
+                    WHERE date IS NOT NULL
+                    ORDER BY date;
+                """)
+                dates = [
+                    row[0].isoformat()
+                    for row in cur.fetchall()
+                ]
+
+                # -------------------------------------------------
+                # 4. Hub
+                # -------------------------------------------------
+                # Use the most common departure station
+                cur.execute("""
+                    SELECT dep_station
+                    FROM flights
+                    WHERE dep_station IS NOT NULL
+                    GROUP BY dep_station
+                    ORDER BY COUNT(*) DESC
+                    LIMIT 1;
+                """)
+                hub_row = cur.fetchone()
+                hub = hub_row[0] if hub_row else None
+
+                # -------------------------------------------------
+                # 5. Currency
+                # -------------------------------------------------
+                cur.execute("""
+                    SELECT currency
+                    FROM costs
+                    LIMIT 1;
+                """)
+                currency_row = cur.fetchone()
+                currency = currency_row[0] if currency_row else None
+
+                # -------------------------------------------------
+                # 6. Counts
+                # -------------------------------------------------
+                cur.execute("""
+                    SELECT COUNT(*)
+                    FROM crew;
+                """)
+                crew_count = cur.fetchone()[0]
+
+                cur.execute("""
+                    SELECT COUNT(*)
+                    FROM flights;
+                """)
+                flight_count = cur.fetchone()[0]
+
+                cur.execute("""
+                    SELECT COUNT(*)
+                    FROM pairings;
+                """)
+                pairing_count = cur.fetchone()[0]
+
+                cur.execute("""
+                    SELECT COUNT(DISTINCT crew_id)
+                    FROM reserve_pool;
+                """)
+                reserve_count = cur.fetchone()[0]
 
         return jsonify({
             "data": {
-                "crew_count": crew_count,
-                "flight_count": flight_count,
-                "pairing_count": pairing_count,
-                "reserve_count": reserve_count
+                "snapshot_utc": (
+                    snapshot_utc.isoformat()
+                    if snapshot_utc else None
+                ),
+
+                "week": {
+                    "start": (
+                        week_start.isoformat()
+                        if week_start else None
+                    ),
+                    "end": (
+                        week_end.isoformat()
+                        if week_end else None
+                    )
+                },
+
+                "dates": dates,
+
+                "hub": hub,
+
+                "currency": currency,
+
+                "counts": {
+                    "crew": crew_count,
+                    "flights": flight_count,
+                    "pairings": pairing_count,
+                    "reserves": reserve_count
+                }
             }
         }), 200
 
-    except Exception:
+    except Exception as e:
+        print("META ERROR:", repr(e))
+
         return jsonify({
             "error": {
                 "code": "INTERNAL_ERROR",
